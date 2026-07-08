@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  projects     Project[]
+}
+
+model Project {
+  id         String      @id @default(cuid())
+  userId     String
+  name       String
+  createdAt  DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sheets     Sheet[]
+  conditions Condition[]
+}
+
+model Sheet {
+  id                 String        @id @default(cuid())
+  projectId          String
+  name               String
+  pageNumber         Int
+  fileUrl            String
+  scalePixelsPerUnit Float?
+  unitSystem         String        @default("imperial") // "imperial" | "metric"
+  createdAt          DateTime      @default(now())
+  project            Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  measurements       Measurement[]
+}
+
+model Condition {
+  id              String        @id @default(cuid())
+  projectId       String
+  name            String
+  color           String
+  measurementType String // "linear" | "area" | "count"
+  unit            String
+  unitCost        Float?
+  createdAt       DateTime      @default(now())
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  measurements    Measurement[]
+}
+
+model Measurement {
+  id            String    @id @default(cuid())
+  sheetId       String
+  conditionId   String
+  geometry      Json // { points: [{x, y}, ...] } in PDF base coordinates (scale 1)
+  computedValue Float
+  source        String    @default("manual") // "manual" | "ai"
+  createdAt     DateTime  @default(now())
+  sheet         Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  condition     Condition @relation(fields: [conditionId], references: [id], onDelete: Cascade)
+}
