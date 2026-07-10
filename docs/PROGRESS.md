@@ -20,3 +20,8 @@
 
 ### Demo credentials
 `demo@plansimple.dev` / `plansimple123`
+
+### Login incident (2026-07-10)
+- Symptom: browser `Unexpected end of JSON input` on login
+- Cause: Vercel `DATABASE_URL` points at old Prisma takeoff DB (`User`/`Project`/`Sheet`), not PlanSimple Neon (`users`/…)
+- Fix shipped: JSON-safe login + `/api/health`; user must overwrite Vercel `DATABASE_URL` to `ep-icy-frog-atam6ryq-pooler…` and redeploy
