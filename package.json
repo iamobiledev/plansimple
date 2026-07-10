@@ -5,15 +5,15 @@
   "description": "PlanSimple — cloud-native construction document collaboration",
   "packageManager": "pnpm@10.33.3",
   "scripts": {
-    "dev": "turbo run dev --parallel",
-    "build": "turbo run build",
+    "dev": "pnpm --filter @plansimple/web dev",
+    "build": "pnpm --filter @plansimple/shared build && pnpm --filter @plansimple/web build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:e2e": "pnpm --filter @plansimple/e2e test",
-    "db:migrate": "pnpm --filter @plansimple/api db:migrate",
+    "db:migrate": "pnpm --filter @plansimple/web db:migrate",
     "db:generate": "pnpm --filter @plansimple/api db:generate",
-    "seed": "pnpm --filter @plansimple/api seed",
+    "seed": "pnpm --filter @plansimple/web seed",
     "seed:drawings": "pnpm --filter @plansimple/api seed:drawings"
   },
   "devDependencies": {

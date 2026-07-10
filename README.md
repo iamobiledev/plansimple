@@ -1,73 +1,30 @@
-# PlanSimple
+# PlanSimple (Vercel + Neon)
 
-Cloud-native construction document collaboration — view, mark up, measure, compare, and collaborate on drawing sets in the browser, with AI-assisted takeoff and workflows.
+Browser-first construction document collaboration. Production target: **Vercel** + **Neon Postgres** + **Vercel Blob**.
 
-> Rebuilt as a pnpm monorepo (NestJS API, Vite web, Yjs realtime, Python workers). Neon-compatible Postgres with RLS. Local stack via Docker Compose.
-
-## Quick start
-
-### Prerequisites
-- Node 22+, pnpm 10+
-- Docker + Docker Compose
+## Local
 
 ```bash
-cp .env.example .env
 pnpm install
-docker compose up --build -d postgres redis minio minio-init mailpit
+cp .env.example apps/web/.env.local   # set Neon URLs + SESSION_SECRET
 pnpm --filter @plansimple/shared build
-pnpm --filter @plansimple/api db:migrate
-pnpm --filter @plansimple/api seed
-pnpm --filter @plansimple/api dev   # :3000
-pnpm --filter @plansimple/web dev   # :5173
+pnpm --filter @plansimple/web db:migrate
+pnpm --filter @plansimple/web seed
+pnpm --filter @plansimple/web dev     # http://localhost:3000
 ```
 
-Or bring up the full stack:
+Demo: `demo@plansimple.dev` / `plansimple123`
 
-```bash
-docker compose up --build
-```
+## Vercel
 
-Demo login (after seed):
+1. Project root directory: `apps/web`
+2. Connect Neon env vars + Blob store
+3. Build uses pnpm workspace (see `apps/web/vercel.json`)
+4. Run migrations once: `DATABASE_URL_UNPOOLED=... pnpm --filter @plansimple/web db:migrate`
 
-```
-demo@plansimple.dev / plansimple123
-```
+## Architecture notes
 
-### Neon (production Postgres)
-
-Set both:
-
-- `DATABASE_URL` — pooled connection string
-- `DATABASE_URL_UNPOOLED` — direct URL for migrations
-
-Run `pnpm db:migrate` against the unpooled URL before deploy.
-
-## Monorepo layout
-
-```
-apps/web        Vite + React PlanSimple UI
-apps/api        NestJS API gateway (auth, orgs, projects, …)
-apps/realtime   Yjs / presence WebSocket server
-workers/docproc Python: ingest, tiles, OCR
-workers/ai      Python: Claude + embeddings
-packages/shared Zod schemas + geometry/scale/csv
-docs/           PROGRESS.md + ADRs
-```
-
-## Scripts
-
-| Command | Description |
-|---|---|
-| `pnpm dev` | Turbo parallel dev |
-| `pnpm build` | Build all packages |
-| `pnpm test` | Unit/integration tests |
-| `pnpm db:migrate` | Apply SQL migrations |
-| `pnpm seed` | Seed demo user/org/project |
-
-## Phase status
-
-See [`docs/PROGRESS.md`](docs/PROGRESS.md). Architecture decisions live in [`docs/adr/`](docs/adr/).
-
-## License
-
-Proprietary — all rights reserved.
+- Next.js App Router for UI + API
+- Soft realtime (SSE/polling) — no dedicated WS server
+- pdf.js client viewer (serverless-friendly)
+- Legacy Docker/Nest stack kept under `legacy/` and `apps/api` for reference
