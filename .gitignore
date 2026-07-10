@@ -39,3 +39,4 @@ e2e/playwright-report/
 apps/web/.vercel-deploy-args.json
 scripts/vercel-mcp-deploy-args.json
 .tmp-deploy-args.json
+.auth-slice-args.json
