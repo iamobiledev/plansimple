@@ -8,8 +8,8 @@ const sheets: Sheet[] = [
 ];
 
 const conditions: Condition[] = [
-  { id: "c1", projectId: "p", name: "Drywall", color: "#ff0000", measurementType: "linear", unit: "LF", unitCost: 10 },
-  { id: "c2", projectId: "p", name: "Receptacle", color: "#00ff00", measurementType: "count", unit: "EA", unitCost: null },
+  { id: "c1", projectId: "p", name: "Drywall", color: "#ff0000", measurementType: "linear", unit: "LF", unitCost: 10, iconKey: null },
+  { id: "c2", projectId: "p", name: "Receptacle", color: "#00ff00", measurementType: "count", unit: "EA", unitCost: null, iconKey: null },
 ];
 
 function m(id: string, sheetId: string, conditionId: string, value: number): Measurement {

@@ -30,7 +30,7 @@ export default function Toolbar() {
       if (!active || active.measurementType !== t.needs) {
         const match = project.conditions.find((c) => c.measurementType === t.needs);
         if (!match) {
-          showToast(`Create a ${t.needs} condition first (right panel)`);
+          showToast(`Add a ${t.needs} takeoff item first (right panel)`);
           return;
         }
         setActiveCondition(match.id);

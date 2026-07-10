@@ -12,9 +12,25 @@ import { put, del, list } from "@vercel/blob";
  *   through the auth-gated /api/files/[key] route.
  */
 export interface FileStorage {
-  save(key: string, data: Buffer): Promise<void>;
+  save(key: string, data: Buffer, contentType?: string): Promise<void>;
   load(key: string): Promise<Buffer>;
   delete(key: string): Promise<void>;
+}
+
+/** Infer a served content type from a storage key's extension. */
+export function contentTypeForKey(key: string): string {
+  const ext = key.slice(key.lastIndexOf(".") + 1).toLowerCase();
+  switch (ext) {
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "svg":
+      return "image/svg+xml";
+    default:
+      return "application/pdf";
+  }
 }
 
 class LocalDiskStorage implements FileStorage {
@@ -44,11 +60,11 @@ class VercelBlobStorage implements FileStorage {
     return blobs[0]?.url ?? null;
   }
 
-  async save(key: string, data: Buffer): Promise<void> {
+  async save(key: string, data: Buffer, contentType?: string): Promise<void> {
     await put(path.basename(key), data, {
       access: "public",
       addRandomSuffix: false,
-      contentType: "application/pdf",
+      contentType: contentType ?? contentTypeForKey(key),
     });
   }
 

@@ -1,27 +1,14 @@
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { useStore } from "../store";
+import ProjectDialog from "./ProjectDialog";
 
 export default function ProjectsPage() {
   const projects = useStore((s) => s.projects);
-  const createProject = useStore((s) => s.createProject);
   const deleteProject = useStore((s) => s.deleteProject);
   const openProject = useStore((s) => s.openProject);
   const logout = useStore((s) => s.logout);
   const user = useStore((s) => s.user);
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setBusy(true);
-    try {
-      await createProject(name.trim());
-      setName("");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [creating, setCreating] = useState(false);
 
   return (
     <div className="projects-page">
@@ -37,26 +24,35 @@ export default function ProjectsPage() {
       </header>
 
       <main className="projects-main">
-        <h1>Projects</h1>
-        <form className="project-create" onSubmit={onCreate}>
-          <input
-            placeholder="New project name…"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button className="btn primary" disabled={busy || !name.trim()}>
-            Create project
+        <div className="projects-title-row">
+          <h1>Projects</h1>
+          <button className="btn primary" onClick={() => setCreating(true)}>
+            + New project
           </button>
-        </form>
+        </div>
 
         {projects.length === 0 ? (
-          <p className="muted">No projects yet — create one above, or run the seed script.</p>
+          <div className="empty-state big">
+            <p className="muted">
+              No projects yet. Create one, upload your PDF plan sheets, and start your takeoff.
+            </p>
+            <button className="btn primary" onClick={() => setCreating(true)}>
+              + Create your first project
+            </button>
+          </div>
         ) : (
           <ul className="project-list">
             {projects.map((p) => (
               <li key={p.id}>
                 <button className="project-card" onClick={() => void openProject(p.id)}>
-                  <span className="project-name">{p.name}</span>
+                  <div className="project-card-main">
+                    <span className="project-name">{p.name}</span>
+                    {(p.address || p.clientName) && (
+                      <span className="muted small">
+                        {[p.clientName, p.address].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
+                  </div>
                   <span className="muted small">
                     {p._count?.sheets ?? 0} sheet{(p._count?.sheets ?? 0) === 1 ? "" : "s"}
                   </span>
@@ -77,6 +73,8 @@ export default function ProjectsPage() {
           </ul>
         )}
       </main>
+
+      {creating && <ProjectDialog project={null} onClose={() => setCreating(false)} />}
     </div>
   );
 }

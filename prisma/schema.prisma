@@ -11,17 +11,21 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
+  id           String        @id @default(cuid())
+  email        String        @unique
   passwordHash String
-  createdAt    DateTime  @default(now())
+  createdAt    DateTime      @default(now())
   projects     Project[]
+  libraryItems LibraryItem[]
+  icons        Icon[]
 }
 
 model Project {
   id         String      @id @default(cuid())
   userId     String
   name       String
+  address    String?
+  clientName String?
   createdAt  DateTime    @default(now())
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   sheets     Sheet[]
@@ -41,6 +45,7 @@ model Sheet {
   measurements       Measurement[]
 }
 
+// A takeoff item ("condition" in estimating parlance) — what's being measured.
 model Condition {
   id              String        @id @default(cuid())
   projectId       String
@@ -49,9 +54,35 @@ model Condition {
   measurementType String // "linear" | "area" | "count"
   unit            String
   unitCost        Float?
+  iconKey         String? // storage key of a custom marker icon (count items)
   createdAt       DateTime      @default(now())
   project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   measurements    Measurement[]
+}
+
+// A user's reusable takeoff-item template, shared across projects.
+model LibraryItem {
+  id              String   @id @default(cuid())
+  userId          String
+  name            String
+  color           String
+  measurementType String // "linear" | "area" | "count"
+  unit            String
+  unitCost        Float?
+  iconKey         String?
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// A user-uploaded marker icon (PNG/SVG/JPEG) usable on count items.
+model Icon {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  fileKey     String
+  contentType String
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Measurement {

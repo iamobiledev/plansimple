@@ -738,3 +738,160 @@ label {
   z-index: 60;
   max-width: 380px;
 }
+
+/* ---------- projects page extras ---------- */
+.projects-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.projects-title-row h1 {
+  margin: 0;
+}
+
+.project-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 12px;
+}
+
+.empty-state.big {
+  align-items: center;
+  text-align: center;
+  padding: 60px 20px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+/* ---------- workspace header project ---------- */
+.workspace-project {
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  max-width: 280px;
+}
+
+.workspace-project:hover {
+  background: var(--bg-panel);
+}
+
+.workspace-subtitle {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+
+/* ---------- icon picker ---------- */
+.icon-picker {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.icon-choice {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.icon-choice img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.icon-choice.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px #3b82c455;
+}
+
+.icon-choice.upload {
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: 1.2rem;
+}
+
+.icon-default-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2.5px solid;
+  display: block;
+}
+
+/* ---------- library ---------- */
+.dialog.wide {
+  width: 560px;
+}
+
+.library-list {
+  max-height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.library-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.library-item:last-child {
+  border-bottom: none;
+}
+
+.library-icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #fff;
+  padding: 1px;
+  flex-shrink: 0;
+}
+
+/* ---------- misc ---------- */
+.checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  width: auto;
+}

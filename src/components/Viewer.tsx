@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Stage, Layer, Image as KonvaImage, Line, Circle, Group, Label, Tag, Text } from "react-konva";
 import type Konva from "konva";
 import type { KonvaEventObject } from "konva/lib/Node";
@@ -488,31 +488,18 @@ export default function Viewer() {
             // count marker
             const p = m.geometry.points[0];
             return (
-              <Group
+              <CountMarker
                 key={m.id}
                 x={p.x}
                 y={p.y}
-                scaleX={invScale}
-                scaleY={invScale}
-                onClick={select}
+                color={c.color}
+                iconKey={c.iconKey}
+                invScale={invScale}
+                isSelected={isSelected}
                 draggable={tool === "select" && isSelected}
-                onDragEnd={(e) => {
-                  const np = { x: e.target.x(), y: e.target.y() };
-                  e.target.position({ x: p.x, y: p.y }); // state will re-render
-                  void updateMeasurementGeometry(m.id, [np]);
-                }}
-              >
-                <Circle
-                  radius={9}
-                  stroke={c.color}
-                  strokeWidth={isSelected ? 3.5 : 2}
-                  fill={hexAlpha(c.color, "66")}
-                  shadowColor={isSelected ? c.color : undefined}
-                  shadowBlur={isSelected ? 10 : 0}
-                />
-                <Line points={[-4, 0, 4, 0]} stroke={c.color} strokeWidth={2} />
-                <Line points={[0, -4, 0, 4]} stroke={c.color} strokeWidth={2} />
-              </Group>
+                onClick={select}
+                onDragEnd={(np) => void updateMeasurementGeometry(m.id, [np])}
+              />
             );
           })}
 
@@ -798,5 +785,101 @@ export default function Viewer() {
         />
       )}
     </div>
+  );
+}
+
+
+// ---- custom count markers -------------------------------------------------
+const iconImageCache = new Map<string, HTMLImageElement>();
+
+function useIconImage(key: string | null): HTMLImageElement | null {
+  const [, force] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    if (!key) return;
+    let img = iconImageCache.get(key);
+    if (!img) {
+      img = new window.Image();
+      img.src = `/api/files/${key}`;
+      iconImageCache.set(key, img);
+    }
+    if (!img.complete) {
+      const onLoad = () => force();
+      img.addEventListener("load", onLoad);
+      img.addEventListener("error", onLoad);
+      return () => {
+        img.removeEventListener("load", onLoad);
+        img.removeEventListener("error", onLoad);
+      };
+    }
+  }, [key]);
+  if (!key) return null;
+  const img = iconImageCache.get(key);
+  return img && img.complete && img.naturalWidth > 0 ? img : null;
+}
+
+function CountMarker({
+  x,
+  y,
+  color,
+  iconKey,
+  invScale,
+  isSelected,
+  draggable,
+  onClick,
+  onDragEnd,
+}: {
+  x: number;
+  y: number;
+  color: string;
+  iconKey: string | null;
+  invScale: number;
+  isSelected: boolean;
+  draggable: boolean;
+  onClick: (e: KonvaEventObject<MouseEvent>) => void;
+  onDragEnd: (p: Point) => void;
+}) {
+  const img = useIconImage(iconKey);
+  return (
+    <Group
+      x={x}
+      y={y}
+      scaleX={invScale}
+      scaleY={invScale}
+      onClick={onClick}
+      draggable={draggable}
+      onDragEnd={(e) => {
+        const np = { x: e.target.x(), y: e.target.y() };
+        e.target.position({ x, y }); // state will re-render at the new spot
+        onDragEnd(np);
+      }}
+    >
+      {img ? (
+        <>
+          <KonvaImage
+            image={img}
+            width={26}
+            height={26}
+            offsetX={13}
+            offsetY={13}
+            shadowColor={isSelected ? color : "#00000088"}
+            shadowBlur={isSelected ? 12 : 3}
+          />
+          {isSelected && <Circle radius={17} stroke={color} strokeWidth={2.5} dash={[4, 3]} />}
+        </>
+      ) : (
+        <>
+          <Circle
+            radius={9}
+            stroke={color}
+            strokeWidth={isSelected ? 3.5 : 2}
+            fill={hexAlpha(color, "66")}
+            shadowColor={isSelected ? color : undefined}
+            shadowBlur={isSelected ? 10 : 0}
+          />
+          <Line points={[-4, 0, 4, 0]} stroke={color} strokeWidth={2} />
+          <Line points={[0, -4, 0, 4]} stroke={color} strokeWidth={2} />
+        </>
+      )}
+    </Group>
   );
 }

@@ -12,6 +12,7 @@ const patchSchema = z
     measurementType: z.enum(["linear", "area", "count"]),
     unit: z.string().min(1).max(20),
     unitCost: z.number().nonnegative().nullable().optional(),
+    iconKey: z.string().max(100).nullable().optional(),
   })
   .partial();
 

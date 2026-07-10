@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { useStore } from "../store";
 import { buildSummary, summaryToCsv } from "../lib/csv";
 import { formatQuantity } from "../lib/scale";
-import ConditionDialog from "./ConditionDialog";
+import ItemDialog from "./ItemDialog";
+import LibraryDialog from "./LibraryDialog";
 import type { Condition, MeasurementType } from "../types";
 
 const TYPE_BADGE: Record<MeasurementType, string> = {
@@ -19,6 +20,7 @@ export default function RightPanel() {
   const setTool = useStore((s) => s.setTool);
   const deleteCondition = useStore((s) => s.deleteCondition);
   const [editing, setEditing] = useState<Condition | "new" | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [groupBySheet, setGroupBySheet] = useState(false);
 
   const summary = useMemo(
@@ -38,7 +40,7 @@ export default function RightPanel() {
 
   function pickCondition(c: Condition) {
     setActiveCondition(c.id);
-    // Selecting a condition arms its matching tool so measuring starts immediately.
+    // Selecting an item arms its matching tool so measuring starts immediately.
     setTool(c.measurementType);
   }
 
@@ -59,16 +61,30 @@ export default function RightPanel() {
     <aside className="right-panel">
       <section className="conditions-section">
         <div className="panel-title">
-          Conditions
+          Takeoff Items
+          <span className="spacer" />
+          <button
+            className="btn small"
+            title="Reusable items you've saved"
+            onClick={() => setLibraryOpen(true)}
+          >
+            Library
+          </button>
           <button className="btn small primary" onClick={() => setEditing("new")}>
-            + New
+            + New Item
           </button>
         </div>
         <div className="condition-list">
           {project.conditions.length === 0 && (
-            <p className="muted small pad">
-              Conditions are what you're measuring (e.g. "Interior Wall"). Create one to start.
-            </p>
+            <div className="empty-state">
+              <p className="muted small">
+                Takeoff items are what you&rsquo;re measuring — walls, flooring, fixtures. Create
+                one, then click on the drawing to measure it.
+              </p>
+              <button className="btn small primary" onClick={() => setEditing("new")}>
+                + Create your first item
+              </button>
+            </div>
           )}
           {project.conditions.map((c) => {
             const sheet = project.sheets[0];
@@ -78,9 +94,14 @@ export default function RightPanel() {
                 key={c.id}
                 className={`condition-item ${c.id === activeConditionId ? "active" : ""}`}
                 onClick={() => pickCondition(c)}
-                title={`Measure with "${c.name}"`}
+                title={`Measure "${c.name}" (${c.measurementType})`}
               >
-                <span className="condition-swatch" style={{ background: c.color }} />
+                {c.iconKey ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="library-icon" src={`/api/files/${c.iconKey}`} alt="" />
+                ) : (
+                  <span className="condition-swatch" style={{ background: c.color }} />
+                )}
                 <div className="condition-meta">
                   <span className="condition-name">{c.name}</span>
                   <span className="muted small">
@@ -95,7 +116,7 @@ export default function RightPanel() {
                 </span>
                 <button
                   className="btn subtle tiny"
-                  title="Edit condition"
+                  title="Edit item"
                   onClick={(e) => {
                     e.stopPropagation();
                     setEditing(c);
@@ -105,7 +126,7 @@ export default function RightPanel() {
                 </button>
                 <button
                   className="btn subtle danger tiny"
-                  title="Delete condition"
+                  title="Delete item"
                   onClick={(e) => {
                     e.stopPropagation();
                     if (confirm(`Delete "${c.name}" and its measurements?`)) {
@@ -133,7 +154,7 @@ export default function RightPanel() {
             by sheet
           </label>
           <button className="btn small" onClick={exportCsv} disabled={summary.length === 0}>
-            Export CSV
+            CSV
           </button>
         </div>
         <div className="summary-table-wrap">
@@ -143,7 +164,7 @@ export default function RightPanel() {
             <table className="summary-table">
               <thead>
                 <tr>
-                  <th>Condition</th>
+                  <th>Item</th>
                   {groupBySheet && <th>Sheet</th>}
                   <th className="num">Qty</th>
                   <th>Unit</th>
@@ -153,7 +174,7 @@ export default function RightPanel() {
               <tbody>
                 {(groupBySheet
                   ? summary
-                  : // roll sheets up per condition
+                  : // roll sheets up per item
                     [...summary
                       .reduce((map, line) => {
                         const existing = map.get(line.conditionName);
@@ -197,11 +218,12 @@ export default function RightPanel() {
       </section>
 
       {editing && (
-        <ConditionDialog
+        <ItemDialog
           condition={editing === "new" ? null : editing}
           onClose={() => setEditing(null)}
         />
       )}
+      {libraryOpen && <LibraryDialog onClose={() => setLibraryOpen(false)} />}
     </aside>
   );
 }

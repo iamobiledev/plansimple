@@ -1,5 +1,7 @@
 import type {
   Condition,
+  Icon,
+  LibraryItem,
   Measurement,
   MeasurementSource,
   Point,
@@ -48,8 +50,10 @@ export const api = {
 
   // projects
   listProjects: () => request<Project[]>("/api/projects"),
-  createProject: (name: string) =>
-    request<Project>("/api/projects", { method: "POST", body: JSON.stringify({ name }) }),
+  createProject: (data: { name: string; address?: string | null; clientName?: string | null }) =>
+    request<Project>("/api/projects", { method: "POST", body: JSON.stringify(data) }),
+  updateProject: (id: string, data: Partial<Pick<Project, "name" | "address" | "clientName">>) =>
+    request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   getProject: (id: string) => request<ProjectDetail>(`/api/projects/${id}`),
   deleteProject: (id: string) => request<{ ok: true }>(`/api/projects/${id}`, { method: "DELETE" }),
   listProjectMeasurements: (projectId: string) =>
@@ -90,6 +94,25 @@ export const api = {
   ) => request<Measurement>(`/api/measurements/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteMeasurement: (id: string) =>
     request<{ ok: true }>(`/api/measurements/${id}`, { method: "DELETE" }),
+
+  // item library
+  listLibrary: () => request<LibraryItem[]>("/api/library"),
+  createLibraryItem: (data: Omit<LibraryItem, "id" | "userId">) =>
+    request<LibraryItem>("/api/library", { method: "POST", body: JSON.stringify(data) }),
+  updateLibraryItem: (id: string, data: Partial<Omit<LibraryItem, "id" | "userId">>) =>
+    request<LibraryItem>(`/api/library/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteLibraryItem: (id: string) =>
+    request<{ ok: true }>(`/api/library/${id}`, { method: "DELETE" }),
+
+  // icons
+  listIcons: () => request<Icon[]>("/api/icons"),
+  uploadIcon: (file: File, name?: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (name) form.append("name", name);
+    return request<Icon>("/api/icons", { method: "POST", body: form });
+  },
+  deleteIcon: (id: string) => request<{ ok: true }>(`/api/icons/${id}`, { method: "DELETE" }),
 
   // ai
   aiCount: (data: {

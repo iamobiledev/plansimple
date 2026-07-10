@@ -12,9 +12,12 @@ Built as a single **Next.js** application that deploys entirely on **Vercel**.
 - **Measurement tools**
   - *Linear* — click points along a wall/pipe run, double-click or Enter to finish; live running-length label while drawing.
   - *Area* — click polygon vertices, double-click/Enter to close; computed area shown, vertices editable after the fact.
-  - *Count* — click to drop markers; each marker is one unit of the active condition.
-  - Every measurement belongs to a **condition** (e.g. "Interior Wall — 5/8\" Drywall") with a name, color, type, unit, and optional unit cost.
+  - *Count* — click to drop markers; each marker is one unit of the active item, rendered with the item's custom icon if one is set.
+  - Every measurement belongs to a **takeoff item** (e.g. "Interior Wall — 5/8\" Drywall") with a name, color, type, unit, optional unit cost, and (for counts) an optional custom marker icon.
   - Select a measurement to see its value, drag its vertices, or delete it. Undo/redo (Ctrl+Z / Ctrl+Shift+Z) covers add, edit, and delete.
+- **Item library & custom icons** — save takeoff items to a personal library and add them to any project in one click; upload PNG/SVG/JPEG marker icons (max 1 MB) for count items.
+- **Project details** — each project carries a site address and client name, shown on project cards and exported documents.
+- **Branded PDF export** — one click produces a customer-ready PDF: a cover page with the project name, client, address, date, and a quantity summary table, followed by every plan sheet with color-coded vector measurement overlays, quantity labels, a takeoff legend, and a footer stamp. Generated entirely client-side with pdf-lib (no server time limits).
 - **AI-assisted takeoff** (requires `ANTHROPIC_API_KEY`)
   - *AI Count* — drag a box around one example symbol (a receptacle, a door tag…); the sheet image plus the cropped example are sent to Claude, which returns candidate locations. Candidates render as ghost markers — click to reject bad ones, then Accept. Nothing is committed without confirmation.
   - *AI Area* — click inside a room; Claude traces the enclosed boundary and returns a ghost polygon whose vertices you can drag before accepting.
@@ -102,6 +105,7 @@ The measurement math is deliberately isolated from the UI in pure, unit-tested m
 - `src/lib/geometry.ts` — polyline length, shoelace polygon area, perimeter, centroid
 - `src/lib/scale.ts` — calibration, pixel↔real-world conversion, imperial/metric parsing & formatting
 - `src/lib/csv.ts` — quantity summary aggregation and CSV serialization
+- `src/lib/exportPdf.ts` — branded takeoff PDF builder (cover page + vector sheet overlays)
 
 ## Architecture
 
@@ -149,7 +153,9 @@ PATCH|DELETE /api/sheets/[id]          GET /api/sheets/[id]/measurements
 POST /api/conditions/project/[id]      PATCH|DELETE /api/conditions/[id]
 POST /api/measurements                 PATCH|DELETE /api/measurements/[id]
 POST /api/ai/count                     POST /api/ai/suggest-area
-GET  /api/files/[key]                  (auth-gated sheet PDFs)
+GET|POST /api/library                  PATCH|DELETE /api/library/[id]
+GET|POST /api/icons                    DELETE /api/icons/[id]
+GET  /api/files/[key]                  (auth-gated sheet PDFs & icons)
 ```
 
 ## Out of scope (MVP)

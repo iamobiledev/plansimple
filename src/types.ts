@@ -11,6 +11,8 @@ export interface Project {
   id: string;
   userId: string;
   name: string;
+  address: string | null;
+  clientName: string | null;
   createdAt: string;
   _count?: { sheets: number };
 }
@@ -25,6 +27,7 @@ export interface Sheet {
   unitSystem: UnitSystem;
 }
 
+// A takeoff item ("condition") — what's being measured.
 export interface Condition {
   id: string;
   projectId: string;
@@ -33,6 +36,28 @@ export interface Condition {
   measurementType: MeasurementType;
   unit: string;
   unitCost: number | null;
+  iconKey: string | null;
+}
+
+// A reusable takeoff-item template in the user's library.
+export interface LibraryItem {
+  id: string;
+  userId: string;
+  name: string;
+  color: string;
+  measurementType: MeasurementType;
+  unit: string;
+  unitCost: number | null;
+  iconKey: string | null;
+}
+
+// A user-uploaded marker icon.
+export interface Icon {
+  id: string;
+  userId: string;
+  name: string;
+  fileKey: string;
+  contentType: string;
 }
 
 export interface Point {

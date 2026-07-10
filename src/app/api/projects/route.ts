@@ -15,10 +15,16 @@ export const GET = apiHandler(async () => {
 
 export const POST = apiHandler(async (req) => {
   const userId = await requireUserId();
-  const parsed = z.object({ name: z.string().min(1).max(200) }).safeParse(await req.json());
+  const parsed = z
+    .object({
+      name: z.string().min(1).max(200),
+      address: z.string().max(300).nullable().optional(),
+      clientName: z.string().max(200).nullable().optional(),
+    })
+    .safeParse(await req.json());
   if (!parsed.success) return json({ error: "Project name is required" }, 400);
   const project = await prisma.project.create({
-    data: { name: parsed.data.name, userId },
+    data: { ...parsed.data, userId },
   });
   return json(project);
 });

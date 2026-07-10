@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { api } from "./api";
 import type {
   Condition,
+  Icon,
+  LibraryItem,
   Measurement,
   MeasurementSource,
   Point,
@@ -55,6 +57,8 @@ interface AppState {
   user: User | null;
   authChecked: boolean;
   projects: Project[];
+  library: LibraryItem[];
+  icons: Icon[];
   project: ProjectDetail | null;
   measurements: Measurement[];
   activeSheetId: string | null;
@@ -76,7 +80,8 @@ interface AppState {
 
   // projects
   loadProjects: () => Promise<void>;
-  createProject: (name: string) => Promise<void>;
+  createProject: (data: { name: string; address?: string | null; clientName?: string | null }) => Promise<void>;
+  updateProject: (data: Partial<Pick<Project, "name" | "address" | "clientName">>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   openProject: (id: string) => Promise<void>;
   closeProject: () => void;
@@ -87,11 +92,22 @@ interface AppState {
   deleteSheet: (id: string) => Promise<void>;
   calibrateSheet: (sheetId: string, pixelsPerUnit: number, unitSystem: Sheet["unitSystem"]) => Promise<void>;
 
-  // conditions
-  createCondition: (data: Omit<Condition, "id" | "projectId">) => Promise<void>;
+  // takeoff items (conditions)
+  createCondition: (data: Omit<Condition, "id" | "projectId">) => Promise<Condition | null>;
   updateCondition: (id: string, data: Partial<Omit<Condition, "id" | "projectId">>) => Promise<void>;
   deleteCondition: (id: string) => Promise<void>;
   setActiveCondition: (id: string | null) => void;
+
+  // item library
+  loadLibrary: () => Promise<void>;
+  saveToLibrary: (data: Omit<LibraryItem, "id" | "userId">) => Promise<void>;
+  deleteLibraryItem: (id: string) => Promise<void>;
+  addFromLibrary: (item: LibraryItem) => Promise<void>;
+
+  // icons
+  loadIcons: () => Promise<void>;
+  uploadIcon: (file: File, name?: string) => Promise<Icon | null>;
+  deleteIcon: (id: string) => Promise<void>;
 
   // tools & selection
   setTool: (tool: Tool) => void;
@@ -175,6 +191,8 @@ export const useStore = create<AppState>((set, get) => {
     user: null,
     authChecked: false,
     projects: [],
+    library: [],
+    icons: [],
     project: null,
     measurements: [],
     activeSheetId: null,
@@ -192,7 +210,11 @@ export const useStore = create<AppState>((set, get) => {
       try {
         const { user } = await api.me();
         set({ user, authChecked: true });
-        if (user) await get().loadProjects();
+        if (user) {
+          await get().loadProjects();
+          void get().loadLibrary();
+          void get().loadIcons();
+        }
       } catch {
         set({ authChecked: true });
       }
@@ -202,12 +224,16 @@ export const useStore = create<AppState>((set, get) => {
       const user = await api.login(email, password);
       set({ user });
       await get().loadProjects();
+      void get().loadLibrary();
+      void get().loadIcons();
     },
 
     register: async (email, password) => {
       const user = await api.register(email, password);
       set({ user });
       await get().loadProjects();
+      void get().loadLibrary();
+      void get().loadIcons();
     },
 
     logout: async () => {
@@ -215,6 +241,8 @@ export const useStore = create<AppState>((set, get) => {
       set({
         user: null,
         projects: [],
+        library: [],
+        icons: [],
         project: null,
         measurements: [],
         activeSheetId: null,
@@ -228,9 +256,19 @@ export const useStore = create<AppState>((set, get) => {
       set({ projects: await api.listProjects() });
     },
 
-    createProject: async (name) => {
-      await api.createProject(name);
+    createProject: async (data) => {
+      await api.createProject(data);
       await get().loadProjects();
+    },
+
+    updateProject: async (data) => {
+      const project = get().project;
+      if (!project) return;
+      const updated = await api.updateProject(project.id, data);
+      set((s) => ({
+        project: s.project ? { ...s.project, ...updated } : s.project,
+        projects: s.projects.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)),
+      }));
     },
 
     deleteProject: async (id) => {
@@ -332,7 +370,7 @@ export const useStore = create<AppState>((set, get) => {
 
     createCondition: async (data) => {
       const project = get().project;
-      if (!project) return;
+      if (!project) return null;
       const condition = await api.createCondition(project.id, data);
       set((s) => ({
         project: s.project
@@ -340,6 +378,7 @@ export const useStore = create<AppState>((set, get) => {
           : s.project,
         activeConditionId: condition.id,
       }));
+      return condition;
     },
 
     updateCondition: async (id, data) => {
@@ -369,6 +408,77 @@ export const useStore = create<AppState>((set, get) => {
     },
 
     setActiveCondition: (id) => set({ activeConditionId: id }),
+
+    loadLibrary: async () => {
+      try {
+        set({ library: await api.listLibrary() });
+      } catch {
+        /* non-fatal */
+      }
+    },
+
+    saveToLibrary: async (data) => {
+      const item = await api.createLibraryItem(data);
+      set((s) => ({
+        library: [...s.library, item].sort((a, b) => a.name.localeCompare(b.name)),
+      }));
+      get().showToast(`"${item.name}" saved to your library`);
+    },
+
+    deleteLibraryItem: async (id) => {
+      await api.deleteLibraryItem(id);
+      set((s) => ({ library: s.library.filter((i) => i.id !== id) }));
+    },
+
+    addFromLibrary: async (item) => {
+      await get().createCondition({
+        name: item.name,
+        color: item.color,
+        measurementType: item.measurementType,
+        unit: item.unit,
+        unitCost: item.unitCost,
+        iconKey: item.iconKey,
+      });
+      get().showToast(`"${item.name}" added to this takeoff`);
+    },
+
+    loadIcons: async () => {
+      try {
+        set({ icons: await api.listIcons() });
+      } catch {
+        /* non-fatal */
+      }
+    },
+
+    uploadIcon: async (file, name) => {
+      try {
+        const icon = await api.uploadIcon(file, name);
+        set((s) => ({ icons: [icon, ...s.icons] }));
+        return icon;
+      } catch (err) {
+        get().showToast(err instanceof Error ? err.message : "Icon upload failed");
+        return null;
+      }
+    },
+
+    deleteIcon: async (id) => {
+      const icon = get().icons.find((i) => i.id === id);
+      await api.deleteIcon(id);
+      set((s) => ({
+        icons: s.icons.filter((i) => i.id !== id),
+        library: s.library.map((l) =>
+          l.iconKey === icon?.fileKey ? { ...l, iconKey: null } : l
+        ),
+        project: s.project
+          ? {
+              ...s.project,
+              conditions: s.project.conditions.map((c) =>
+                c.iconKey === icon?.fileKey ? { ...c, iconKey: null } : c
+              ),
+            }
+          : s.project,
+      }));
+    },
 
     setTool: (tool) => {
       set({ tool, selectedMeasurementId: null });

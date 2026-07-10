@@ -1,9 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import SheetSidebar from "./SheetSidebar";
 import Toolbar from "./Toolbar";
 import Viewer from "./Viewer";
 import RightPanel from "./RightPanel";
+import ProjectDialog from "./ProjectDialog";
+import ExportDialog from "./ExportDialog";
 
 function isTypingTarget(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
@@ -17,6 +19,8 @@ export default function Workspace() {
   const redo = useStore((s) => s.redo);
   const selectedMeasurementId = useStore((s) => s.selectedMeasurementId);
   const deleteMeasurement = useStore((s) => s.deleteMeasurement);
+  const [editingProject, setEditingProject] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -39,20 +43,39 @@ export default function Workspace() {
 
   if (!project) return null;
 
+  const subtitle = [project.clientName, project.address].filter(Boolean).join(" · ");
+
   return (
     <div className="workspace">
       <header className="workspace-header">
         <button className="btn subtle" onClick={closeProject} title="Back to projects">
-          ← Projects
+          ←
         </button>
-        <span className="workspace-title">{project.name}</span>
+        <button
+          className="workspace-project"
+          title="Edit project details"
+          onClick={() => setEditingProject(true)}
+        >
+          <span className="workspace-title">{project.name}</span>
+          {subtitle && <span className="workspace-subtitle muted small">{subtitle}</span>}
+        </button>
         <Toolbar />
+        <span className="spacer" />
+        <button
+          className="btn primary"
+          title="Export a branded takeoff PDF to share with your customer"
+          onClick={() => setExporting(true)}
+        >
+          ⤓ Export PDF
+        </button>
       </header>
       <div className="workspace-body">
         <SheetSidebar />
         <Viewer />
         <RightPanel />
       </div>
+      {editingProject && <ProjectDialog project={project} onClose={() => setEditingProject(false)} />}
+      {exporting && <ExportDialog onClose={() => setExporting(false)} />}
     </div>
   );
 }
