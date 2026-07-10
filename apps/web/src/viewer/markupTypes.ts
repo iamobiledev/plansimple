@@ -39,7 +39,8 @@ export type DrawTool =
   | "highlighter"
   | "textbox"
   | "callout"
-  | "cloud_callout";
+  | "cloud_callout"
+  | "stamp";
 
 export const DRAW_TOOLS: Array<{ id: DrawTool; label: string }> = [
   { id: "pan", label: "Pan (V)" },
@@ -56,6 +57,7 @@ export const DRAW_TOOLS: Array<{ id: DrawTool; label: string }> = [
   { id: "highlighter", label: "Highlight" },
   { id: "textbox", label: "Text" },
   { id: "callout", label: "Callout" },
+  { id: "stamp", label: "Stamp" },
 ];
 
 export const DEFAULT_STYLE: MarkupStyle = {

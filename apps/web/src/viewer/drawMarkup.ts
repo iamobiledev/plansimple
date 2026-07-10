@@ -42,7 +42,7 @@ export function drawMarkup(
   const g = m.geometry || {};
   const type = m.type;
 
-  if (type === "rectangle" || type === "highlighter") {
+  if (type === "rectangle" || type === "highlighter" || type === "stamp") {
     const x = Number(g.x ?? 0);
     const y = Number(g.y ?? 0);
     const w = Number(g.w ?? 0);
@@ -54,7 +54,15 @@ export function drawMarkup(
       ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
     } else {
       ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
-      if (m.style?.fill && m.style.fill !== "transparent") {
+      if (type === "stamp") {
+        ctx.fillStyle = "rgba(254, 226, 226, 0.85)";
+        ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+        ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+        const text = String(g.text ?? m.subject ?? "REVIEWED");
+        ctx.fillStyle = "#9f1239";
+        ctx.font = `bold ${Math.max(10, 11 * cam.scale)}px sans-serif`;
+        ctx.fillText(text, a.x + 6, a.y + 16 * cam.scale);
+      } else if (m.style?.fill && m.style.fill !== "transparent") {
         ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
       }
     }
@@ -150,13 +158,13 @@ export function drawDraft(
     createdAt: new Date().toISOString(),
   };
 
-  if (["rectangle", "ellipse", "highlighter", "textbox"].includes(tool) && points[0] && cursor) {
+  if (["rectangle", "ellipse", "highlighter", "textbox", "stamp"].includes(tool) && points[0] && cursor) {
     draft.geometry = {
       x: Math.min(points[0].x, cursor.x),
       y: Math.min(points[0].y, cursor.y),
       w: Math.abs(cursor.x - points[0].x),
       h: Math.abs(cursor.y - points[0].y),
-      text: tool === "textbox" ? "Text" : undefined,
+      text: tool === "textbox" ? "Text" : tool === "stamp" ? "REVIEWED" : undefined,
     };
   } else if (["line", "arrow", "callout"].includes(tool) && points[0] && cursor) {
     draft.geometry = { x1: points[0].x, y1: points[0].y, x2: cursor.x, y2: cursor.y, text: "Note" };

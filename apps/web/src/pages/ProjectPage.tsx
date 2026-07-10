@@ -7,6 +7,7 @@ import TileViewport from "../viewer/TileViewport";
 import MarkupToolbar from "../viewer/MarkupToolbar";
 import { FeatureFlagGate, useFeatureFlags } from "../components/FeatureFlags";
 import MarkupListPanel from "../components/MarkupListPanel";
+import ToolChestPanel from "../components/ToolChestPanel";
 import {
   DEFAULT_STYLE,
   type DrawTool,
@@ -176,13 +177,21 @@ export default function ProjectPage() {
     subject: string | null;
   }) {
     if (!orgId || !activePage || !revisionId) return;
+    const me = useAuthStore.getState().user;
+    const geometry = { ...payload.geometry };
+    if (typeof geometry.text === "string") {
+      geometry.text = geometry.text
+        .replaceAll("{{user}}", me?.email || me?.name || "user")
+        .replaceAll("{{date}}", new Date().toISOString().slice(0, 10))
+        .replaceAll("{{status}}", "open");
+    }
     await apiFetch(`/organizations/${orgId}/markups`, {
       method: "POST",
       json: {
         pageId: activePage.id,
         revisionId,
         type: payload.type,
-        geometry: payload.geometry,
+        geometry,
         style: payload.style,
         subject: payload.subject,
         layer: "Default",
@@ -190,6 +199,21 @@ export default function ProjectPage() {
       },
     });
     await qc.invalidateQueries({ queryKey: ["markups", orgId, revisionId] });
+  }
+
+  function downloadExport(mode: "original" | "annotations" | "flattened") {
+    if (!orgId || !activeId || !accessToken) return;
+    const url = `/api/organizations/${orgId}/documents/${activeId}/export?mode=${mode}`;
+    fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Export failed");
+        const blob = await r.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${detail?.filename || "export"}-${mode}.pdf`;
+        a.click();
+      })
+      .catch((e) => setError(e.message));
   }
 
   const searchHits = useMemo(() => {
@@ -206,6 +230,31 @@ export default function ProjectPage() {
         </Link>
         <h1 className="text-lg font-bold text-slate-900">Project drawings</h1>
         <form onSubmit={onUpload} className="ml-auto flex items-center gap-2">
+          {activeId && detail?.processingStatus === "ready" && (
+            <div className="mr-2 flex gap-1">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => downloadExport("original")}
+              >
+                Export original
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => downloadExport("annotations")}
+              >
+                Export +markups
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => downloadExport("flattened")}
+              >
+                Export flattened
+              </button>
+            </div>
+          )}
           <input type="file" name="file" accept="application/pdf" className="text-sm" disabled={busy} />
           <button
             type="submit"
@@ -289,8 +338,19 @@ export default function ProjectPage() {
               </div>
             ) : null}
           </div>
-          <div className="border-t border-slate-200 p-3">
+          <div className="border-t border-slate-200 p-3 space-y-3">
             <FeatureFlagGate flag="markup_engine">
+              <ToolChestPanel
+                orgId={orgId || ""}
+                currentTool={tool}
+                currentStyle={style}
+                currentSubject={subject}
+                onApply={(t, s, sub) => {
+                  setTool(t);
+                  setStyle({ ...DEFAULT_STYLE, ...s });
+                  setSubject(sub);
+                }}
+              />
               <MarkupListPanel
                 orgId={orgId || ""}
                 revisionId={revisionId}

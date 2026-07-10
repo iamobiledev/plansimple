@@ -409,6 +409,26 @@ export const aiUsage = pgTable(
   (t) => [index("ai_usage_org_idx").on(t.organizationId)]
 );
 
+export const toolChestItems = pgTable(
+  "tool_chest_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    shared: boolean("shared").notNull().default(false),
+    markupType: text("markup_type").notNull(),
+    style: jsonb("style").notNull().default({}),
+    defaultSubject: text("default_subject"),
+    defaultGeometry: jsonb("default_geometry"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("tool_chest_items_org_idx").on(t.organizationId)]
+);
+
 /** Helper: tenant tables that carry organization_id for RLS. */
 export const tenantTables = [
   "memberships",
@@ -427,6 +447,7 @@ export const tenantTables = [
   "yjs_documents",
   "feature_flags",
   "ai_usage",
+  "tool_chest_items",
 ] as const;
 
 export { sql };

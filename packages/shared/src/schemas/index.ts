@@ -81,3 +81,4 @@ export const createWorkflowItemSchema = z.object({
 
 export * from "./documents.js";
 export * from "./markups.js";
+export * from "./toolchest.js";

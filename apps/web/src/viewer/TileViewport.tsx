@@ -159,7 +159,14 @@ export default function TileViewport({
   }
 
   function commitBoxOrLine(start: Point, end: Point) {
-    if (["rectangle", "ellipse", "highlighter", "textbox"].includes(tool)) {
+    if (["rectangle", "ellipse", "highlighter", "textbox", "stamp"].includes(tool)) {
+      const stampText =
+        tool === "stamp"
+          ? subject ||
+            `REVIEWED\n${new Date().toISOString().slice(0, 10)}\n{{user}}`
+          : tool === "textbox"
+            ? subject || "Text"
+            : undefined;
       onCreateMarkup?.({
         type: tool,
         geometry: {
@@ -167,13 +174,13 @@ export default function TileViewport({
           y: Math.min(start.y, end.y),
           w: Math.abs(end.x - start.x),
           h: Math.abs(end.y - start.y),
-          text: tool === "textbox" ? subject || "Text" : undefined,
+          text: stampText,
         },
         style: {
           ...style,
           fill: tool === "highlighter" ? "rgba(250,204,21,0.35)" : style.fill,
         },
-        subject: subject || null,
+        subject: subject || (tool === "stamp" ? "Reviewed" : null),
       });
     } else if (["line", "arrow", "callout"].includes(tool)) {
       onCreateMarkup?.({

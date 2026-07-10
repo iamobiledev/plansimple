@@ -12,6 +12,8 @@ import { FlagsModule } from "./flags/flags.module";
 import { MarkupsModule } from "./markups/markups.module";
 import { SessionsModule } from "./sessions/sessions.module";
 import { WorkflowsModule } from "./workflows/workflows.module";
+import { ToolChestModule } from "./toolchest/toolchest.module";
+import { ExportModule } from "./export/export.module";
 import { JwtAuthGuard } from "./auth/jwt-auth.guard";
 
 @Module({
@@ -26,6 +28,8 @@ import { JwtAuthGuard } from "./auth/jwt-auth.guard";
     MarkupsModule,
     SessionsModule,
     WorkflowsModule,
+    ToolChestModule,
+    ExportModule,
     FlagsModule,
     HealthModule,
   ],
