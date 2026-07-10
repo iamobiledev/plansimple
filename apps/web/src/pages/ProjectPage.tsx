@@ -9,6 +9,8 @@ import { FeatureFlagGate, useFeatureFlags } from "../components/FeatureFlags";
 import MarkupListPanel from "../components/MarkupListPanel";
 import ToolChestPanel from "../components/ToolChestPanel";
 import AiPanel from "../components/AiPanel";
+import WorkflowsPanel from "../components/WorkflowsPanel";
+import NotificationsPanel from "../components/NotificationsPanel";
 import { useCollabRoom } from "../viewer/useCollab";
 import OverlayCompare from "../viewer/OverlayCompare";
 import {
@@ -57,6 +59,7 @@ export default function ProjectPage() {
   const aiEnabled = Boolean(
     flags.data?.ai_sheet_indexing || flags.data?.ai_nl_search || flags.data?.ai_rfi_draft
   );
+  const workflowsEnabled = Boolean(flags.data?.workflows_rfi);
   const user = useAuthStore((s) => s.user);
   const [compareMode, setCompareMode] = useState(false);
   const [compareOpacity, setCompareOpacity] = useState(0.55);
@@ -525,6 +528,10 @@ export default function ProjectPage() {
             )}
           </div>
           <div className="border-t border-slate-200 p-3 space-y-3">
+            {orgId && <NotificationsPanel orgId={orgId} />}
+            {workflowsEnabled && orgId && projectId && (
+              <WorkflowsPanel orgId={orgId} projectId={projectId} />
+            )}
             {aiEnabled && orgId && projectId && (
               <AiPanel
                 orgId={orgId}

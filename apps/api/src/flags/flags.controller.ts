@@ -17,8 +17,8 @@ const DEFAULT_FLAGS: Record<string, boolean> = {
   ai_takeoff: false,
   ai_rfi_draft: true,
   ai_session_summary: false,
-  workflows_rfi: false,
-  billing: false,
+  workflows_rfi: true,
+  billing: true,
 };
 
 function envOverride(key: string, fallback: boolean): boolean {

@@ -429,6 +429,29 @@ export const toolChestItems = pgTable(
   (t) => [index("tool_chest_items_org_idx").on(t.organizationId)]
 );
 
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    link: text("link"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("notifications_user_idx").on(t.userId),
+    index("notifications_org_idx").on(t.organizationId),
+  ]
+);
+
 /** Helper: tenant tables that carry organization_id for RLS. */
 export const tenantTables = [
   "memberships",
@@ -448,6 +471,7 @@ export const tenantTables = [
   "feature_flags",
   "ai_usage",
   "tool_chest_items",
+  "notifications",
 ] as const;
 
 export { sql };

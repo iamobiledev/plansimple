@@ -3,27 +3,28 @@
 > Update after every work session. Assume the next agent has no memory.
 
 ## Current phase
-**Phase 5 — Revisions / compare / overlay** vertical slice complete.  
-Phases 0–5 slices on branch.
+**All planned phases 0–7 have vertical slices shipped** on this branch.  
+Deepening (full Bluebeam parity, 50-VU load test, 50-sheet AI eval) remains iterative product work.
 
-## Phase 5 completed
-- Upload new revision (`POST .../documents/:id/revisions/upload`) — immutable version bump.
-- Slip-sheeting: markups copied to matching page numbers with `style.carriedForward`.
-- Diff worker (`plansimple:diff`): block pixel compare of z0 tiles → Diff-layer cloud hotspots; flags carried markups intersecting changes (`needsReview`).
-- Overlay compare UI (red/blue + opacity) when ≥2 revisions.
-- Proven on sample-plans rev B (moved wall): **22 carried, 12 hotspots, 1 flagged** ✅
+## Phase 7 completed
+- Notifications table + API (list / mark read / digest preview) + web panel.
+- Audit log viewer (`GET .../audit-log`) for owners/admins.
+- Billing stub (viewer free, $49/editor seat estimate) + Stripe checkout placeholder.
+- SSO stubs: OIDC login + SAML metadata/ACS.
+- Project export manifest (ZIP contents contract).
+- Runbooks: OWASP checklist, Neon/MinIO backup-restore, load-test notes.
+- Flags: `workflows_rfi`, `billing` enabled; RFI panel in project UI.
 
-## Prior
-P0 foundation · P1 tiles · P2 markups/export/toolchest · P3 Yjs · P4 calibrate/measure.
+## Phases 0–6 (summary)
+- P0 monorepo/auth/RLS · P1 tiles · P2 markups/export/toolchest · P3 Yjs · P4 measure · P5 revisions/diff · P6 AI heuristics
 
-## Still open
-- Phase 6 AI (sheet index, NL search, etc.)
-- Phase 7 hardening / Stripe / load test
-- Playwright multiplayer offline reconnect
-- True PDF Annots (vs drawn content export)
+## Known gaps vs full DoD
+- Docker Compose overlay still broken on this agent VM (native fallback documented).
+- Full tus, OCR worker, Playwright 2-browser offline converge, Stripe live charges, 500-page load test not executed here.
+- AI vision ≥90% title-block eval needs Anthropic + larger fixtures.
 
 ## Demo
-Upload a revised PDF on a document → wait for ready → Overlay compare; Markup List shows Diff layer + flagged items.
+`demo@plansimple.dev` / `plansimple123` — full path: upload → calibrate → measure → markup → revision compare → AI search → RFI.
 
-## Next
-Phase 6 AI features behind flags.
+## Next (optional)
+Execute load test on a proper Docker host; wire real Stripe; expand Playwright collab E2E.

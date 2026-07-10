@@ -16,6 +16,8 @@ import { ToolChestModule } from "./toolchest/toolchest.module";
 import { ExportModule } from "./export/export.module";
 import { PagesModule } from "./pages/pages.module";
 import { AiModule } from "./ai/ai.module";
+import { NotificationsModule } from "./notifications/notifications.module";
+import { BillingModule } from "./billing/billing.module";
 import { JwtAuthGuard } from "./auth/jwt-auth.guard";
 
 @Module({
@@ -34,6 +36,8 @@ import { JwtAuthGuard } from "./auth/jwt-auth.guard";
     ToolChestModule,
     ExportModule,
     AiModule,
+    NotificationsModule,
+    BillingModule,
     FlagsModule,
     HealthModule,
   ],
