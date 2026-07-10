@@ -7,8 +7,9 @@ import {
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { BulkStatusInput, CreateMarkupInput, UpdateMarkupInput } from "@plansimple/shared";
 import { DatabaseService } from "../db/database.service";
-import { auditLog, markups } from "../db/schema";
+import { auditLog, markups, pages } from "../db/schema";
 import { OrgsService } from "../orgs/orgs.service";
+import { PagesService } from "../pages/pages.service";
 
 const READ_ROLES = ["owner", "admin", "editor", "reviewer", "viewer"] as const;
 const WRITE_ROLES = ["owner", "admin", "editor"] as const;
@@ -19,7 +20,8 @@ const DELETE_OWN_ROLES = ["owner", "admin", "editor", "reviewer"] as const;
 export class MarkupsService {
   constructor(
     private readonly db: DatabaseService,
-    private readonly orgs: OrgsService
+    private readonly orgs: OrgsService,
+    private readonly pagesService: PagesService
   ) {}
 
   async listByPage(organizationId: string, pageId: string, userId: string) {
@@ -47,6 +49,29 @@ export class MarkupsService {
   async create(organizationId: string, userId: string, input: CreateMarkupInput) {
     await this.orgs.requireRole(organizationId, userId, [...WRITE_ROLES]);
     return this.db.withTenant(organizationId, userId, async (db) => {
+      let measurement = input.measurement ?? null;
+      if (
+        !measurement &&
+        ["length", "polylength", "area", "perimeter", "count"].includes(input.type)
+      ) {
+        const pageRows = await db
+          .select()
+          .from(pages)
+          .where(and(eq(pages.id, input.pageId), eq(pages.organizationId, organizationId)));
+        const cal = pageRows[0]?.scaleCalibration as
+          | { pixelsPerUnit?: number; unit?: string }
+          | null
+          | undefined;
+        const ppu = cal?.pixelsPerUnit ?? null;
+        const unit = cal?.unit === "m" ? "m" : "ft";
+        measurement = this.pagesService.computeMeasurement(
+          input.type,
+          input.geometry as Record<string, unknown>,
+          ppu,
+          unit
+        );
+      }
+
       const [markup] = await db
         .insert(markups)
         .values({
@@ -60,7 +85,7 @@ export class MarkupsService {
           status: input.status ?? "open",
           subject: input.subject ?? null,
           layer: input.layer ?? "Default",
-          measurement: input.measurement ?? null,
+          measurement,
         })
         .returning();
 

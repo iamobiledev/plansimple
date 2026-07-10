@@ -155,11 +155,18 @@ export default function MarkupListPanel({
             <tr>
               <th className="px-3 py-2 font-semibold">Type</th>
               <th className="px-3 py-2 font-semibold">Subject</th>
+              <th className="px-3 py-2 font-semibold">Qty</th>
               <th className="px-3 py-2 font-semibold">Status</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((m) => (
+            {filtered.map((m) => {
+              const full = (listQuery.data ?? []).find((x) => x.id === m.id);
+              const qty =
+                full?.measurement?.calibratedValue != null
+                  ? `${full.measurement.calibratedValue.toFixed(2)} ${full.measurement.unit}`
+                  : "—";
+              return (
               <tr
                 key={m.id}
                 className={`cursor-pointer border-t border-slate-100 ${
@@ -169,12 +176,13 @@ export default function MarkupListPanel({
               >
                 <td className="px-3 py-2 font-medium text-slate-800">{m.type}</td>
                 <td className="px-3 py-2 text-slate-600">{m.subject || "—"}</td>
+                <td className="px-3 py-2 text-slate-600">{qty}</td>
                 <td className="px-3 py-2 text-slate-600">{m.status}</td>
               </tr>
-            ))}
+            );})}
             {!listQuery.isLoading && !filtered.length && (
               <tr>
-                <td colSpan={3} className="px-3 py-6 text-center text-slate-400">
+                <td colSpan={4} className="px-3 py-6 text-center text-slate-400">
                   No markups yet — pick a tool and draw
                 </td>
               </tr>

@@ -92,29 +92,57 @@ export function drawMarkup(
       ctx.lineTo(b.x - size * Math.cos(ang + 0.4), b.y - size * Math.sin(ang + 0.4));
       ctx.stroke();
     }
-  } else if (type === "polyline" || type === "freehand" || type === "polygon" || type === "cloud" || type === "cloud_callout") {
+  } else if (
+    type === "polyline" ||
+    type === "freehand" ||
+    type === "polygon" ||
+    type === "cloud" ||
+    type === "cloud_callout" ||
+    type === "length" ||
+    type === "polylength" ||
+    type === "area" ||
+    type === "count"
+  ) {
     let points = pts(g);
     if (type === "cloud" || type === "cloud_callout") {
       if (points.length >= 3) points = cloudPathFromPolygon(points, { radius: 8 });
     }
-    if (points.length < 2) return;
-    ctx.beginPath();
-    const first = pdfToScreen(cam, points[0]!);
-    ctx.moveTo(first.x, first.y);
-    for (let i = 1; i < points.length; i++) {
-      const p = pdfToScreen(cam, points[i]!);
-      ctx.lineTo(p.x, p.y);
+    if (type === "count") {
+      for (const pt of points) {
+        const s = pdfToScreen(cam, pt);
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = (m.style?.stroke as string) || "#7c3aed";
+        ctx.fill();
+      }
+    } else if (points.length >= 2) {
+      ctx.beginPath();
+      const first = pdfToScreen(cam, points[0]!);
+      ctx.moveTo(first.x, first.y);
+      for (let i = 1; i < points.length; i++) {
+        const p = pdfToScreen(cam, points[i]!);
+        ctx.lineTo(p.x, p.y);
+      }
+      if (type === "polygon" || type === "cloud" || type === "cloud_callout" || type === "area") {
+        ctx.closePath();
+      }
+      ctx.stroke();
     }
-    if (type === "polygon" || type === "cloud" || type === "cloud_callout") ctx.closePath();
-    ctx.stroke();
     if (type === "cloud_callout") {
       const text = String(g.text ?? m.subject ?? "");
-      if (text) {
-        const anchor = pdfToScreen(cam, points[0]!);
+      if (text && points[0]) {
+        const anchor = pdfToScreen(cam, points[0]);
         ctx.fillStyle = "#0f172a";
         ctx.font = `${12 * cam.scale}px sans-serif`;
         ctx.fillText(text, anchor.x + 6, anchor.y - 6);
       }
+    }
+    if (m.measurement?.calibratedValue != null && points[0]) {
+      const label = `${m.measurement.calibratedValue.toFixed(2)} ${m.measurement.unit}`;
+      const anchor = pdfToScreen(cam, points[0]);
+      ctx.fillStyle = "#064e3b";
+      ctx.font = `bold ${11 * cam.scale}px sans-serif`;
+      ctx.fillText(label, anchor.x + 8, anchor.y - 8);
     }
   } else if (type === "textbox" || type === "callout") {
     const x = Number(g.x ?? 0);
@@ -168,9 +196,12 @@ export function drawDraft(
     };
   } else if (["line", "arrow", "callout"].includes(tool) && points[0] && cursor) {
     draft.geometry = { x1: points[0].x, y1: points[0].y, x2: cursor.x, y2: cursor.y, text: "Note" };
-  } else if (["polyline", "polygon", "cloud", "cloud_callout", "freehand"].includes(tool)) {
+  } else if (["polyline", "polygon", "cloud", "cloud_callout", "freehand", "polylength", "area", "length"].includes(tool)) {
     const all = cursor ? [...points, cursor] : points;
     draft.geometry = { points: all, text: tool.includes("callout") ? "Note" : undefined };
+    if (tool === "length" || tool === "polylength" || tool === "area") {
+      draft.type = tool === "length" ? "length" : tool;
+    }
   }
   drawMarkup(ctx, cam, draft, true);
 }

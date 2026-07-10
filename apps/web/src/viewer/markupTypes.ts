@@ -21,6 +21,12 @@ export type Markup = {
   subject: string | null;
   layer: string | null;
   authorId: string | null;
+  measurement?: {
+    kind: string;
+    rawValue: number;
+    calibratedValue: number | null;
+    unit: string;
+  } | null;
   createdAt: string;
   updatedAt?: string;
 };
@@ -40,11 +46,21 @@ export type DrawTool =
   | "textbox"
   | "callout"
   | "cloud_callout"
-  | "stamp";
+  | "stamp"
+  | "calibrate"
+  | "length"
+  | "polylength"
+  | "area"
+  | "count";
 
 export const DRAW_TOOLS: Array<{ id: DrawTool; label: string }> = [
   { id: "pan", label: "Pan (V)" },
   { id: "select", label: "Select (Esc)" },
+  { id: "calibrate", label: "Calibrate" },
+  { id: "length", label: "Length" },
+  { id: "polylength", label: "PolyLength" },
+  { id: "area", label: "Area" },
+  { id: "count", label: "Count" },
   { id: "rectangle", label: "Rectangle" },
   { id: "ellipse", label: "Ellipse" },
   { id: "line", label: "Line" },

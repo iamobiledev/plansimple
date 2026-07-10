@@ -14,6 +14,7 @@ import { SessionsModule } from "./sessions/sessions.module";
 import { WorkflowsModule } from "./workflows/workflows.module";
 import { ToolChestModule } from "./toolchest/toolchest.module";
 import { ExportModule } from "./export/export.module";
+import { PagesModule } from "./pages/pages.module";
 import { JwtAuthGuard } from "./auth/jwt-auth.guard";
 
 @Module({
@@ -26,6 +27,7 @@ import { JwtAuthGuard } from "./auth/jwt-auth.guard";
     ProjectsModule,
     DocumentsModule,
     MarkupsModule,
+    PagesModule,
     SessionsModule,
     WorkflowsModule,
     ToolChestModule,

@@ -26,6 +26,7 @@ export type TileViewportProps = {
     style: MarkupStyle;
     subject: string | null;
   }) => void;
+  onCalibrate?: (points: [Point, Point]) => void;
 };
 
 function tileUrl(prefix: string, z: number, x: number, y: number) {
@@ -48,6 +49,7 @@ export default function TileViewport({
   selectedId = null,
   onSelect,
   onCreateMarkup,
+  onCalibrate,
 }: TileViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -139,16 +141,21 @@ export default function TileViewport({
   function finishPoly() {
     const points = draftRef.current;
     if (points.length < 2) return;
-    const closed = tool === "polygon" || tool === "cloud" || tool === "cloud_callout";
+    const closed = tool === "polygon" || tool === "cloud" || tool === "cloud_callout" || tool === "area";
     if (closed && points.length < 3) return;
+    const type =
+      tool === "polylength" ? "polylength" : tool === "area" ? "area" : tool;
     onCreateMarkup?.({
-      type: tool,
+      type,
       geometry: {
         points,
         text: tool.includes("callout") ? subject || "Note" : undefined,
       },
       style: {
         ...style,
+        stroke: ["length", "polylength", "area"].includes(type)
+          ? style.stroke || "#059669"
+          : style.stroke,
         fill: tool === "highlighter" ? "rgba(250,204,21,0.35)" : style.fill,
       },
       subject: subject || null,
@@ -159,6 +166,19 @@ export default function TileViewport({
   }
 
   function commitBoxOrLine(start: Point, end: Point) {
+    if (tool === "calibrate") {
+      onCalibrate?.([start, end]);
+      return;
+    }
+    if (tool === "length") {
+      onCreateMarkup?.({
+        type: "length",
+        geometry: { points: [start, end] },
+        style: { ...style, stroke: style.stroke || "#059669" },
+        subject: subject || "Length",
+      });
+      return;
+    }
     if (["rectangle", "ellipse", "highlighter", "textbox", "stamp"].includes(tool)) {
       const stampText =
         tool === "stamp"
@@ -308,7 +328,7 @@ export default function TileViewport({
           }
           const p = localPoint(e);
           drawingRef.current = true;
-          if (["polyline", "polygon", "cloud", "cloud_callout"].includes(tool)) {
+          if (["polyline", "polygon", "cloud", "cloud_callout", "polylength", "area"].includes(tool)) {
             if (e.detail === 2) {
               finishPoly();
               return;
@@ -316,6 +336,15 @@ export default function TileViewport({
             const next = [...draftRef.current, p];
             draftRef.current = next;
             setDraft(next);
+            return;
+          }
+          if (tool === "count") {
+            onCreateMarkup?.({
+              type: "count",
+              geometry: { points: [p], count: 1 },
+              style: { ...style, stroke: style.stroke || "#7c3aed" },
+              subject: subject || "Count",
+            });
             return;
           }
           if (tool === "freehand") {
@@ -350,6 +379,10 @@ export default function TileViewport({
           dragRef.current = null;
           if (tool === "pan" || tool === "select") return;
           if (["polyline", "polygon", "cloud", "cloud_callout"].includes(tool)) {
+            drawingRef.current = false;
+            return;
+          }
+          if (["polylength", "area"].includes(tool)) {
             drawingRef.current = false;
             return;
           }

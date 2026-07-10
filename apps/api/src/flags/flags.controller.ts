@@ -9,7 +9,7 @@ import { Public } from "../common/auth.decorators";
 const DEFAULT_FLAGS: Record<string, boolean> = {
   markup_engine: true, // Phase 2 enabled for local/demo; override with FEATURE_MARKUP_ENGINE=0
   realtime_sessions: true, // Phase 3 Yjs sessions; override with FEATURE_REALTIME_SESSIONS=0
-  measurements: false,
+  measurements: true, // Phase 4 takeoff; override with FEATURE_MEASUREMENTS=0
   revision_compare: false,
   ai_sheet_indexing: false,
   ai_nl_search: false,

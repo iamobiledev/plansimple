@@ -3,36 +3,27 @@
 > Update after every work session. Assume the next agent has no memory.
 
 ## Current phase
-**Phase 3 — Real-time Sessions** vertical slice landed (Yjs server + client + CRDT converge test).  
-Phases 0–2 largely complete.
+**Phase 4 — Measurement & takeoff** vertical slice complete (calibrate + length/area/count + 0.5% accuracy).  
+Phases 0–3 slices also landed.
 
-## Completed
-### Phase 3 (this turn)
-- `apps/realtime`: y-websocket-compatible sync + awareness server; Redis pub/sub fan-out; Postgres `yjs_documents` persistence.
-- Web: `useCollabRoom` (Y.Doc + WebsocketProvider), peer avatars, live connection indicator; markups published to Y.Map after API create (dual-write path).
-- `realtime_sessions` feature flag default **true** (override `FEATURE_REALTIME_SESSIONS=0`).
-- Unit: Yjs two-doc converge test ✅
-- WS smoke: connect to room, receive sync/awareness frames ✅
+## Completed (Phase 4)
+- `PATCH /organizations/:orgId/pages/:pageId/calibration` stores `scale_calibration` (+ pixelsPerUnit) and recalculates measurement markups.
+- Tools: Calibrate, Length, PolyLength, Area, Count (as markup types with live qty labels).
+- Markup create auto-fills `measurement` jsonb from page calibration.
+- Markup List shows Qty column; CSV export still available.
+- Accuracy unit test + API smoke: 20 pts/ft → 20×15 room = **300 SF** (0% error) ✅
+- `measurements` feature flag default **true**.
 
-### Phase 2 (prior)
-Draw tools, Markup List/CSV, Tool Chest, stamp, PDF export modes, round-trip tests.
+## Prior phases
+- P0 foundation, P1 tiles, P2 markups/export/toolchest, P3 Yjs realtime.
 
-### Phase 0–1 (prior)
-Monorepo, auth/RLS, tile ingest/viewer, seed sets, E2E.
-
-## Still open for full Phase 3 acceptance
-- Playwright two-browser concurrent markup converge + 60s offline reconnect.
-- Follow-user / viewport indicators.
-- Comment @mentions + notifications.
-- Session activity report export.
-- Host permission restrictions in-session.
+## Still open
+- Volume / cutouts / region scales / preset scales UI.
+- Phase 5 revision compare; Phase 6 AI; Phase 7 hardening.
+- Playwright multiplayer offline reconnect.
 
 ## Demo
-`demo@plansimple.dev` / `plansimple123` — open a sheet with two browsers; Live indicator should show peers when both connected to same revision room.
+Calibrate with two clicks + `20'-0"`, then Area tool around a known rectangle.
 
-Realtime: `ws://127.0.0.1:1234` · API `:3000` · Web `:5173`
-
-## Next steps
-1. Playwright multiplayer converge E2E.
-2. Phase 4 measurement tools + calibration.
-3. Offline reconnect stress test.
+## Next
+Phase 5 revisions/compare overlay, or deepen Phase 4 presets/cutouts.

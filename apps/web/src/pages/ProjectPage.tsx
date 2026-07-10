@@ -30,6 +30,11 @@ type PageRow = {
   widthPts: number;
   heightPts: number;
   processingStatus: string;
+  scaleCalibration?: {
+    pixelsPerUnit?: number;
+    unit?: string;
+    unitSystem?: string;
+  } | null;
 };
 
 type DocDetail = DocRow & { pages: PageRow[] };
@@ -45,6 +50,7 @@ export default function ProjectPage() {
   const flags = useFeatureFlags();
   const markupEnabled = Boolean(flags.data?.markup_engine);
   const realtimeEnabled = Boolean(flags.data?.realtime_sessions);
+  const measurementsEnabled = Boolean(flags.data?.measurements);
   const user = useAuthStore((s) => s.user);
 
   const [docs, setDocs] = useState<DocRow[]>([]);
@@ -248,6 +254,43 @@ export default function ProjectPage() {
       .catch((e) => setError(e.message));
   }
 
+  async function onCalibrate(points: [{ x: number; y: number }, { x: number; y: number }]) {
+    if (!orgId || !activePage) return;
+    const raw = window.prompt("Real-world length (e.g. 20'-0\" or 5m)", "20'-0\"");
+    if (!raw) return;
+    // Prefer imperial parse when feet marks present
+    let unit: "ft" | "m" | "in" | "mm" = "ft";
+    let realWorldDistance = 20;
+    try {
+      const { parseLengthInput } = await import("@plansimple/shared");
+      if (/m|mm|cm/i.test(raw) && !/'|"|ft/.test(raw)) {
+        unit = /mm/i.test(raw) ? "mm" : "m";
+        realWorldDistance = parseLengthInput(raw, "metric");
+        if (unit === "m") {
+          /* already meters */
+        }
+      } else {
+        unit = "ft";
+        realWorldDistance = parseLengthInput(raw, "imperial");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Invalid length");
+      return;
+    }
+    try {
+      await apiFetch(`/organizations/${orgId}/pages/${activePage.id}/calibration`, {
+        method: "PATCH",
+        json: { points, realWorldDistance, unit },
+      });
+      if (activeId) await loadDetail(activeId);
+      await qc.invalidateQueries({ queryKey: ["markups", orgId, revisionId] });
+      setStatus("Page calibrated");
+      setTool("length");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Calibration failed");
+    }
+  }
+
   const searchHits = useMemo(() => {
     if (!search || !text) return 0;
     const q = search.toLowerCase();
@@ -318,6 +361,12 @@ export default function ProjectPage() {
             subject={subject}
             onSubject={setSubject}
           />
+          {measurementsEnabled && activePage?.scaleCalibration?.pixelsPerUnit && (
+            <p className="mt-1 text-xs text-emerald-700">
+              Calibrated · {activePage.scaleCalibration.pixelsPerUnit.toFixed(2)} pts/
+              {activePage.scaleCalibration.unit || "ft"}
+            </p>
+          )}
         </div>
       )}
       <div className="flex min-h-0 flex-1">
@@ -444,6 +493,7 @@ export default function ProjectPage() {
               selectedId={selectedId}
               onSelect={setSelectedId}
               onCreateMarkup={markupEnabled ? createMarkup : undefined}
+              onCalibrate={measurementsEnabled ? onCalibrate : undefined}
             />
           ) : (
             <div className="flex h-full items-center justify-center bg-slate-100 text-slate-500">
