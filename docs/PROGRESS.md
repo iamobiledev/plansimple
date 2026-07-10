@@ -11,10 +11,11 @@
 - [x] Deploy runbook `docs/runbooks/vercel-neon-deploy.md`
 
 ### Remaining for production
-- [ ] Full Next.js tree deployed (API routes + viewer) to Motown `plansimple`
-- [ ] Vercel env: `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `SESSION_SECRET`, `NEXT_PUBLIC_APP_URL`
+- [x] Auth-capable production deploy live at https://plansimple.vercel.app (`/login` 200)
+- [ ] **Vercel env vars** (login currently 500 without them): `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `SESSION_SECRET`, `NEXT_PUBLIC_APP_URL`
+- [ ] Redeploy full Next tree from `apps/web` (orgs/projects/viewer) after env is set
 - [ ] Enable Vercel Blob → `BLOB_READ_WRITE_TOKEN`
-- [ ] Set Root Directory to `apps/web` (git-connected) or redeploy full file tree
+- [ ] Set Root Directory to `apps/web` for git-connected builds
 - [ ] Production smoke: login → org → project → upload PDF → markup
 
 ### Demo credentials
