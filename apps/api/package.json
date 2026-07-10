@@ -11,7 +11,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "seed": "tsx src/db/seed.ts"
+    "seed": "tsx src/db/seed.ts",
+    "seed:drawings": "tsx ../../scripts/seed-drawing-sets.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1084.0",

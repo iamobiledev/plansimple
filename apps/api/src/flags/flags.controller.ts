@@ -21,12 +21,23 @@ const DEFAULT_FLAGS: Record<string, boolean> = {
   billing: false,
 };
 
+function envOverride(key: string, fallback: boolean): boolean {
+  const envKey = `FEATURE_${key.toUpperCase()}`;
+  const raw = process.env[envKey];
+  if (raw === undefined) return fallback;
+  return raw === "1" || raw.toLowerCase() === "true";
+}
+
 @Controller("feature-flags")
 @UseGuards(JwtAuthGuard)
 export class FlagsController {
   @Public()
   @Get()
   list() {
-    return DEFAULT_FLAGS;
+    const flags: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(DEFAULT_FLAGS)) {
+      flags[key] = envOverride(key, value);
+    }
+    return flags;
   }
 }

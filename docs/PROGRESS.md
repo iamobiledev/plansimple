@@ -3,52 +3,55 @@
 > Update after every work session. Assume the next agent has no memory.
 
 ## Current phase
-**Phase 1 — Document ingestion & tile viewer** (vertical slice proven)
-**Next: deepen Phase 1 (tus, OCR queue, WebGL, large fixtures) then Phase 2 markups**
+**First-pass foundation complete:** Phase 0 ✅ · Phase 1 vertical slice ✅ · Phases 2–7 scaffolded behind flags ✅  
+**Next deep work (when continuing):** Phase 2 markup authoring UI + Tool Chest; tus; OCR worker; Yjs realtime.
 
-## Completed
+## Completed this session
 ### Phase 0
-- Greenfield pnpm monorepo; NestJS auth/orgs/invites/projects; Drizzle+RLS; Vite UI; workers skeletons; CI; ADRs 001–012.
-- RLS 4/4; signup→org→project→invite→accept proven.
-- Native Postgres fallback (Compose overlay whiteout blocked on agent VM).
+- Monorepo, NestJS auth/orgs/invites/projects, Drizzle+RLS, Vite UI, CI, ADRs, native-dev fallback.
 
-### Phase 1 vertical slice
-- Documents API: initiate upload, multipart upload, complete, list/get, tile metadata, ingest callback.
-- Storage: MinIO (S3) + local driver; auth-gated object proxy.
-- Docproc worker: pypdfium2 → 512px WebP tile pyramid z=0..4 + text.json spans; Redis queue `plansimple:ingest`.
-- Web: ProjectPage upload + polling + `TileViewport` (Canvas tiles, pan/zoom, text search highlights).
-- Feature flags endpoint (post-Phase-2 defaults off).
-- **Acceptance:** upload `scripts/fixtures/sample-plans.pdf` → 3 pages ready → tile WebP 200 OK → text search finds `SEARCHABLE` / roof drain token.
-  - Evidence: `/opt/cursor/artifacts/phase1-tile-z0.webp`, `phase1-text-layer.json`, `phase1-document-detail.json`.
+### Phase 1
+- Upload → MinIO → Redis ingest → pypdfium2 tiles + text → Canvas TileViewport + search.
+- Ingest callback secured with `x-plansimple-ingest-secret` / `INGEST_CALLBACK_SECRET`.
+- Empty-text pages enqueue `plansimple:ocr` (OCR implementation still stub).
 
-## In flight
-- Full tus protocol (multipart convenience path works now).
-- OCR for image-only pages.
-- WebGL2 renderer (Canvas2D works for slice).
-- 300-page/800MB manual fixture script.
+### Scaffolding (flags default off)
+- **Markups API** CRUD + bulk status + audit log; cloud path generator in `@plansimple/shared`.
+- **Sessions API** create/list/end stubs.
+- **Workflows API** RFI / submittal / punch-item stubs.
+- **AI worker** `/v1/sheet-index`, `/v1/nl-search`, `/v1/draft-rfi` (503 without Anthropic key).
+- Web: `FeatureFlagGate`, `MarkupListPanel` (shown when `FEATURE_MARKUP_ENGINE=1`).
 
-## Known issues / decisions
-- Brand **PlanSimple**; Neon prod Postgres; pgvector search.
-- Docker Compose pull fails overlay whiteout on this VM — use MinIO binary + native Postgres/Redis (`docs/runbooks/native-dev-fallback.md`).
-- Auth token issuance must be outside user-insert transaction.
-- Ingest callback uses `@Public()` — add shared secret before production.
-- Text extract merges chars; search token may split across spans (hit on `SEARCHABLE` substring OK for slice).
+### Seed / fixtures
+- `scripts/generate-fixture-pdfs.py` → architectural / structural / MEP sets.
+- `scripts/seed-drawing-sets.ts` uploads + enqueues ingest.
+- All three demo sets processed to `ready` on demo project.
 
-## How to run (agent VM)
+### Tests
+- Shared: 52 unit tests.
+- RLS: 4/4 with `RUN_DB_TESTS=1`.
+- Playwright E2E (`E2E=1`): 3/3 passed (signup, demo login, upload→tiles→text search).
+
+## Known issues
+- Docker Compose overlay whiteout fails on this agent VM — use native Postgres/Redis + MinIO binary.
+- Full tus / WebGL / OCR / Yjs / Bluebeam-parity markups not done.
+- Keep a single API + docproc process; stale processes caused EADDRINUSE / missing routes.
+
+## How to run
 ```
-# MinIO already at :9000; Postgres/Redis native
+# Postgres+Redis native, MinIO :9000
 export DATABASE_URL=postgresql://plansimple:plansimple@localhost:5432/plansimple
-export STORAGE_DRIVER=s3 S3_ENDPOINT=http://127.0.0.1:9000 ...
+export STORAGE_DRIVER=s3 S3_ENDPOINT=http://127.0.0.1:9000 INGEST_CALLBACK_SECRET=dev-ingest-secret ...
 node apps/api/dist/main.js
 cd workers/docproc && python3 -m app.main
 pnpm --filter @plansimple/web dev
+pnpm seed:drawings   # optional re-seed
 ```
 Demo: `demo@plansimple.dev` / `plansimple123`
 
 ## Next steps
-1. Harden ingest callback auth; add per-page progress events (SSE/WS).
-2. tus resumable uploads + signed URL browser PUT path.
-3. OCR queue for empty-text pages.
-4. Phase 2 markup engine scaffold (cloud tool first).
-5. Playwright E2E: upload → search.
-6. Open PR when Phase 1 slice is considered mergeable.
+1. Phase 2: draw tools on TileViewport overlay; Markup List filters/CSV; enable `FEATURE_MARKUP_ENGINE`.
+2. tus resumable uploads; per-page SSE progress.
+3. OCR worker consuming `plansimple:ocr`.
+4. Phase 3 Yjs wiring in `apps/realtime`.
+5. Create/merge PR when ready (draft PR may need manual approval in settings).

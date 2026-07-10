@@ -21,6 +21,7 @@ log = structlog.get_logger()
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 INGEST_QUEUE = "plansimple:ingest"
+OCR_QUEUE = "plansimple:ocr"
 S3_ENDPOINT = os.getenv("S3_ENDPOINT", "http://localhost:9000")
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "plansimple")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "plansimplesecret")
@@ -31,6 +32,7 @@ STORAGE_DRIVER = os.getenv("STORAGE_DRIVER", "s3")  # s3 | local
 TILE_SIZE = 512
 MAX_ZOOM = 4
 PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "http://localhost:3000")
+INGEST_CALLBACK_SECRET = os.getenv("INGEST_CALLBACK_SECRET", "dev-ingest-secret")
 
 app = FastAPI(title="PlanSimple DocProc", version="0.1.0")
 
@@ -167,13 +169,34 @@ def process_job(job: dict[str, Any]) -> dict[str, Any]:
         spans = extract_text(page, height_pts)
         put_bytes(f"{prefix}/text.json", json.dumps({"spans": spans}).encode("utf-8"), "application/json")
 
+        ocr_status = "not_needed" if spans else "queued"
+        if not spans:
+            # Image-only / empty text page — enqueue OCR (OCRmyPDF/Tesseract) for a later worker.
+            try:
+                redis.from_url(REDIS_URL).lpush(
+                    OCR_QUEUE,
+                    json.dumps(
+                        {
+                            "organizationId": organization_id,
+                            "documentId": document_id,
+                            "revisionId": revision_id,
+                            "pageNumber": i + 1,
+                            "tilePrefix": prefix,
+                            "storageKey": storage_key,
+                        }
+                    ),
+                )
+                log.info("ocr.queued", page=i + 1)
+            except Exception as exc:
+                log.warning("ocr.enqueue_failed", error=str(exc))
+
         page_results.append(
             {
                 "pageNumber": i + 1,
                 "widthPts": int(round(width_pts)),
                 "heightPts": int(round(height_pts)),
                 "processingStatus": "ready",
-                "ocrStatus": "not_needed" if spans else "queued",
+                "ocrStatus": ocr_status,
             }
         )
         log.info("ingest.page_ready", page=i + 1, spans=len(spans))
@@ -190,7 +213,11 @@ def process_job(job: dict[str, Any]) -> dict[str, Any]:
     }
     callback = job.get("callbackUrl") or f"{PUBLIC_API_URL}/api/internal/ingest/callback"
     with httpx.Client(timeout=60.0) as client:
-        r = client.post(callback, json=payload)
+        r = client.post(
+            callback,
+            json=payload,
+            headers={"x-plansimple-ingest-secret": INGEST_CALLBACK_SECRET},
+        )
         r.raise_for_status()
     log.info("ingest.done", document_id=document_id, pages=len(page_results))
     return payload

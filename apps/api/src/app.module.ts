@@ -9,6 +9,9 @@ import { HealthModule } from "./health/health.module";
 import { StorageModule } from "./storage/storage.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { FlagsModule } from "./flags/flags.module";
+import { MarkupsModule } from "./markups/markups.module";
+import { SessionsModule } from "./sessions/sessions.module";
+import { WorkflowsModule } from "./workflows/workflows.module";
 import { JwtAuthGuard } from "./auth/jwt-auth.guard";
 
 @Module({
@@ -20,6 +23,9 @@ import { JwtAuthGuard } from "./auth/jwt-auth.guard";
     OrgsModule,
     ProjectsModule,
     DocumentsModule,
+    MarkupsModule,
+    SessionsModule,
+    WorkflowsModule,
     FlagsModule,
     HealthModule,
   ],

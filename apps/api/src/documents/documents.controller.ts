@@ -1,11 +1,13 @@
 import {
+  Body,
   Controller,
   Get,
-  Post,
-  Body,
+  Headers,
   Param,
-  UseGuards,
   ParseUUIDPipe,
+  Post,
+  UnauthorizedException,
+  UseGuards,
   UploadedFile,
   UseInterceptors,
   BadRequestException,
@@ -37,7 +39,6 @@ export class DocumentsController {
     return this.documents.initiateUpload(orgId, projectId, user.userId, body as never);
   }
 
-  /** Multipart convenience upload: initiate + put + complete in one call (Phase 1). */
   @Post("organizations/:orgId/projects/:projectId/documents/upload")
   @UseInterceptors(
     FileInterceptor("file", {
@@ -111,7 +112,14 @@ export class DocumentsController {
 
   @Public()
   @Post("internal/ingest/callback")
-  callback(@Body() body: unknown) {
+  callback(
+    @Headers("x-plansimple-ingest-secret") secret: string | undefined,
+    @Body() body: unknown
+  ) {
+    const expected = process.env.INGEST_CALLBACK_SECRET || "dev-ingest-secret";
+    if (secret !== expected) {
+      throw new UnauthorizedException("Invalid ingest callback secret");
+    }
     return this.documents.applyIngestResult(body as never);
   }
 }

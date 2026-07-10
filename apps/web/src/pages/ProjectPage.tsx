@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 import TileViewport from "../viewer/TileViewport";
+import { FeatureFlagGate } from "../components/FeatureFlags";
+import MarkupListPanel from "../components/MarkupListPanel";
 
 type DocRow = {
   id: string;
@@ -176,7 +178,8 @@ export default function ProjectPage() {
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-        <aside className="w-64 shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-3">
+        <aside className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white">
+          <div className="flex-1 overflow-y-auto p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Documents
           </p>
@@ -223,6 +226,15 @@ export default function ProjectPage() {
               </div>
             </div>
           ) : null}
+          </div>
+          <div className="border-t border-slate-200 p-3">
+            <FeatureFlagGate flag="markup_engine">
+              <MarkupListPanel
+                orgId={orgId || ""}
+                revisionId={detail?.currentRevisionId ?? null}
+              />
+            </FeatureFlagGate>
+          </div>
         </aside>
         <main className="relative min-w-0 flex-1">
           <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-lg bg-white/95 px-3 py-2 shadow">

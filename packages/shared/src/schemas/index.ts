@@ -47,41 +47,6 @@ export const createProjectSchema = z.object({
 });
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
-export const markupTypeSchema = z.enum([
-  "rectangle",
-  "ellipse",
-  "polygon",
-  "polyline",
-  "arrow",
-  "line",
-  "freehand",
-  "cloud",
-  "cloud_callout",
-  "textbox",
-  "callout",
-  "highlighter",
-  "stamp",
-  "length",
-  "polylength",
-  "area",
-  "perimeter",
-  "volume",
-  "count",
-]);
-export type MarkupType = z.infer<typeof markupTypeSchema>;
-
-export const markupStatusSchema = z.enum(["open", "in_review", "resolved", "void"]);
-export type MarkupStatus = z.infer<typeof markupStatusSchema>;
-
-export const measurementKindSchema = z.enum(["length", "area", "volume", "count"]);
-
-export const measurementSchema = z.object({
-  kind: measurementKindSchema,
-  rawValue: z.number(),
-  calibratedValue: z.number().nullable(),
-  unit: z.string(),
-});
-
 export const pointSchema = z.object({ x: z.number(), y: z.number() });
 
 export const scaleCalibrationSchema = z.object({
@@ -101,4 +66,18 @@ export const processingStatusSchema = z.enum([
 
 export const ocrStatusSchema = z.enum(["not_needed", "queued", "processing", "done", "failed"]);
 
+export const createSessionSchema = z.object({
+  name: z.string().min(1).max(200),
+});
+
+export const createWorkflowItemSchema = z.object({
+  number: z.string().min(1).max(64),
+  title: z.string().min(1).max(500),
+  body: z.string().max(20000).optional(),
+  assigneeId: z.string().uuid().optional(),
+  dueDate: z.string().datetime().optional(),
+  linkedMarkupIds: z.array(z.string().uuid()).optional(),
+});
+
 export * from "./documents.js";
+export * from "./markups.js";
