@@ -1,10 +1,18 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { useAuthStore } from "../store/auth";
 import TileViewport from "../viewer/TileViewport";
-import { FeatureFlagGate } from "../components/FeatureFlags";
+import MarkupToolbar from "../viewer/MarkupToolbar";
+import { FeatureFlagGate, useFeatureFlags } from "../components/FeatureFlags";
 import MarkupListPanel from "../components/MarkupListPanel";
+import {
+  DEFAULT_STYLE,
+  type DrawTool,
+  type Markup,
+  type MarkupStyle,
+} from "../viewer/markupTypes";
 
 type DocRow = {
   id: string;
@@ -31,6 +39,10 @@ type TextLayer = {
 export default function ProjectPage() {
   const { orgId, projectId } = useParams();
   const accessToken = useAuthStore((s) => s.accessToken);
+  const qc = useQueryClient();
+  const flags = useFeatureFlags();
+  const markupEnabled = Boolean(flags.data?.markup_engine);
+
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [detail, setDetail] = useState<DocDetail | null>(null);
@@ -41,6 +53,10 @@ export default function ProjectPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [tool, setTool] = useState<DrawTool>("pan");
+  const [style, setStyle] = useState<MarkupStyle>(DEFAULT_STYLE);
+  const [subject, setSubject] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const authHeader = accessToken ? `Bearer ${accessToken}` : null;
 
@@ -56,6 +72,15 @@ export default function ProjectPage() {
     refreshDocs().catch((e) => setError(e.message));
   }, [refreshDocs]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "v" || e.key === "V") setTool("pan");
+      if (e.key === "Escape") setTool("select");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const loadDetail = useCallback(
     async (documentId: string) => {
       if (!orgId) return;
@@ -63,11 +88,11 @@ export default function ProjectPage() {
       setDetail(d);
       setActiveId(documentId);
       setPageIndex(0);
+      setSelectedId(null);
     },
     [orgId]
   );
 
-  // Poll while processing
   useEffect(() => {
     if (!activeId || !detail) return;
     if (detail.processingStatus === "ready") return;
@@ -78,6 +103,19 @@ export default function ProjectPage() {
   }, [activeId, detail?.processingStatus, loadDetail]);
 
   const activePage = detail?.pages?.[pageIndex] ?? null;
+  const revisionId = detail?.currentRevisionId ?? null;
+
+  const markupsQuery = useQuery({
+    queryKey: ["markups", orgId, revisionId],
+    enabled: Boolean(orgId && revisionId && markupEnabled),
+    queryFn: () =>
+      apiFetch<Markup[]>(`/organizations/${orgId}/revisions/${revisionId}/markups`),
+  });
+
+  const pageMarkups = useMemo(
+    () => (markupsQuery.data ?? []).filter((m) => m.pageId === activePage?.id),
+    [markupsQuery.data, activePage?.id]
+  );
 
   useEffect(() => {
     if (!orgId || !activeId || !activePage || activePage.processingStatus !== "ready") {
@@ -92,16 +130,11 @@ export default function ProjectPage() {
       );
       if (cancelled) return;
       setTilePrefix(meta.tilePrefix);
-      const textRes = await fetch(
-        `/api/storage/object/${encodeURIComponent(meta.textKey)}`,
-        {
-          headers: authHeader ? { Authorization: authHeader } : {},
-          credentials: "include",
-        }
-      );
-      if (textRes.ok) {
-        setText(await textRes.json());
-      }
+      const textRes = await fetch(`/api/storage/object/${encodeURIComponent(meta.textKey)}`, {
+        headers: authHeader ? { Authorization: authHeader } : {},
+        credentials: "include",
+      });
+      if (textRes.ok) setText(await textRes.json());
     })().catch((e) => setError(e.message));
     return () => {
       cancelled = true;
@@ -136,6 +169,29 @@ export default function ProjectPage() {
     }
   }
 
+  async function createMarkup(payload: {
+    type: string;
+    geometry: Record<string, unknown>;
+    style: MarkupStyle;
+    subject: string | null;
+  }) {
+    if (!orgId || !activePage || !revisionId) return;
+    await apiFetch(`/organizations/${orgId}/markups`, {
+      method: "POST",
+      json: {
+        pageId: activePage.id,
+        revisionId,
+        type: payload.type,
+        geometry: payload.geometry,
+        style: payload.style,
+        subject: payload.subject,
+        layer: "Default",
+        status: "open",
+      },
+    });
+    await qc.invalidateQueries({ queryKey: ["markups", orgId, revisionId] });
+  }
+
   const searchHits = useMemo(() => {
     if (!search || !text) return 0;
     const q = search.toLowerCase();
@@ -150,13 +206,7 @@ export default function ProjectPage() {
         </Link>
         <h1 className="text-lg font-bold text-slate-900">Project drawings</h1>
         <form onSubmit={onUpload} className="ml-auto flex items-center gap-2">
-          <input
-            type="file"
-            name="file"
-            accept="application/pdf"
-            className="text-sm"
-            disabled={busy}
-          />
+          <input type="file" name="file" accept="application/pdf" className="text-sm" disabled={busy} />
           <button
             type="submit"
             disabled={busy}
@@ -177,61 +227,78 @@ export default function ProjectPage() {
           )}
         </div>
       )}
+      {markupEnabled && (
+        <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
+          <MarkupToolbar
+            tool={tool}
+            onTool={setTool}
+            style={style}
+            onStyle={setStyle}
+            subject={subject}
+            onSubject={setSubject}
+          />
+        </div>
+      )}
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white">
+        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white">
           <div className="flex-1 overflow-y-auto p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Documents
-          </p>
-          <ul className="space-y-1">
-            {docs.map((d) => (
-              <li key={d.id}>
-                <button
-                  type="button"
-                  onClick={() => loadDetail(d.id)}
-                  className={`w-full rounded-lg px-3 py-2 text-left text-sm ${
-                    activeId === d.id ? "bg-blue-50 text-blue-800" : "hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="font-medium truncate">{d.filename}</div>
-                  <div className="text-xs text-slate-500">
-                    {d.processingStatus}
-                    {d.pageCount ? ` · ${d.pageCount}p` : ""}
-                  </div>
-                </button>
-              </li>
-            ))}
-            {!docs.length && (
-              <li className="text-sm text-slate-500">Upload a PDF to get started.</li>
-            )}
-          </ul>
-          {detail?.pages?.length ? (
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Pages
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {detail.pages.map((p, i) => (
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Documents
+            </p>
+            <ul className="space-y-1">
+              {docs.map((d) => (
+                <li key={d.id}>
                   <button
-                    key={p.id}
                     type="button"
-                    onClick={() => setPageIndex(i)}
-                    className={`rounded px-2 py-1 text-xs font-medium ${
-                      i === pageIndex ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                    onClick={() => loadDetail(d.id)}
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm ${
+                      activeId === d.id ? "bg-blue-50 text-blue-800" : "hover:bg-slate-50"
                     }`}
                   >
-                    {p.pageNumber}
+                    <div className="truncate font-medium">{d.filename}</div>
+                    <div className="text-xs text-slate-500">
+                      {d.processingStatus}
+                      {d.pageCount ? ` · ${d.pageCount}p` : ""}
+                    </div>
                   </button>
-                ))}
+                </li>
+              ))}
+              {!docs.length && (
+                <li className="text-sm text-slate-500">Upload a PDF to get started.</li>
+              )}
+            </ul>
+            {detail?.pages?.length ? (
+              <div className="mt-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Pages
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {detail.pages.map((p, i) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPageIndex(i)}
+                      className={`rounded px-2 py-1 text-xs font-medium ${
+                        i === pageIndex ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      {p.pageNumber}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
           </div>
           <div className="border-t border-slate-200 p-3">
             <FeatureFlagGate flag="markup_engine">
               <MarkupListPanel
                 orgId={orgId || ""}
-                revisionId={detail?.currentRevisionId ?? null}
+                revisionId={revisionId}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onChanged={() =>
+                  qc.invalidateQueries({ queryKey: ["markups", orgId, revisionId] })
+                }
               />
             </FeatureFlagGate>
           </div>
@@ -244,10 +311,8 @@ export default function ProjectPage() {
               placeholder="Search text…"
               className="w-48 border-0 bg-transparent text-sm outline-none"
             />
-            {search && (
-              <span className="text-xs text-slate-500">{searchHits} hits</span>
-            )}
-            <span className="text-xs text-slate-400">V pan · wheel zoom</span>
+            {search && <span className="text-xs text-slate-500">{searchHits} hits</span>}
+            <span className="text-xs text-slate-400">V pan · Esc select · wheel zoom</span>
           </div>
           {activePage && tilePrefix && activePage.processingStatus === "ready" ? (
             <TileViewport
@@ -257,6 +322,13 @@ export default function ProjectPage() {
               authHeader={authHeader}
               searchQuery={search}
               textSpans={text?.spans}
+              markups={markupEnabled ? pageMarkups : []}
+              tool={markupEnabled ? tool : "pan"}
+              style={style}
+              subject={subject}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onCreateMarkup={markupEnabled ? createMarkup : undefined}
             />
           ) : (
             <div className="flex h-full items-center justify-center bg-slate-100 text-slate-500">

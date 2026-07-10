@@ -1,28 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-
-type Camera = { x: number; y: number; scale: number };
+import type { Camera, Point } from "./camera";
+import { screenToPdf } from "./camera";
+import { drawDraft, drawMarkup } from "./drawMarkup";
+import type { DrawTool, Markup, MarkupStyle } from "./markupTypes";
+import { DEFAULT_STYLE } from "./markupTypes";
 
 export type TileViewportProps = {
-  /** Page size in PDF points */
   widthPts: number;
   heightPts: number;
   tilePrefix: string;
   maxZoom?: number;
   tileSize?: number;
-  /** Auth header value e.g. Bearer … */
   authHeader?: string | null;
   searchQuery?: string;
   textSpans?: Array<{ text: string; x0: number; y0: number; x1: number; y1: number }>;
+  markups?: Markup[];
+  tool?: DrawTool;
+  style?: MarkupStyle;
+  subject?: string;
+  selectedId?: string | null;
+  onSelect?: (id: string | null) => void;
+  onCreateMarkup?: (payload: {
+    type: string;
+    geometry: Record<string, unknown>;
+    style: MarkupStyle;
+    subject: string | null;
+  }) => void;
 };
 
 function tileUrl(prefix: string, z: number, x: number, y: number) {
   return `/api/storage/object/${encodeURIComponent(`${prefix}/${z}/${x}/${y}.webp`)}`;
 }
 
-/**
- * Canvas tile viewport — streams 512px WebP tiles for the visible region.
- * Camera is in CSS pixels; page content is mapped from PDF points.
- */
 export default function TileViewport({
   widthPts,
   heightPts,
@@ -32,6 +41,13 @@ export default function TileViewport({
   authHeader,
   searchQuery,
   textSpans = [],
+  markups = [],
+  tool = "pan",
+  style = DEFAULT_STYLE,
+  subject = "",
+  selectedId = null,
+  onSelect,
+  onCreateMarkup,
 }: TileViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,8 +56,11 @@ export default function TileViewport({
   const [, bump] = useState(0);
   const cacheRef = useRef(new Map<string, HTMLImageElement | "loading" | "error">());
   const dragRef = useRef<{ ox: number; oy: number; cx: number; cy: number } | null>(null);
+  const draftRef = useRef<Point[]>([]);
+  const [draft, setDraft] = useState<Point[]>([]);
+  const [cursor, setCursor] = useState<Point | null>(null);
+  const drawingRef = useRef(false);
 
-  // Fit width on mount / page change
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -53,13 +72,27 @@ export default function TileViewport({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setSize({ w: el.clientWidth, h: el.clientHeight });
-    });
+    const ro = new ResizeObserver(() => setSize({ w: el.clientWidth, h: el.clientHeight }));
     ro.observe(el);
     setSize({ w: el.clientWidth, h: el.clientHeight });
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        draftRef.current = [];
+        setDraft([]);
+        onSelect?.(null);
+      }
+      if (e.key === "Enter" && draftRef.current.length >= 2) {
+        finishPoly();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool, style, subject]);
 
   const loadTile = useCallback(
     (z: number, x: number, y: number) => {
@@ -68,10 +101,7 @@ export default function TileViewport({
       if (cached) return cached;
       cacheRef.current.set(key, "loading");
       const img = new Image();
-      img.crossOrigin = "anonymous";
-      const url = tileUrl(tilePrefix, z, x, y);
-      // Fetch with auth then object URL (img cannot set Authorization)
-      fetch(url, {
+      fetch(tileUrl(tilePrefix, z, x, y), {
         headers: authHeader ? { Authorization: authHeader } : {},
         credentials: "include",
       })
@@ -93,9 +123,7 @@ export default function TileViewport({
     [tilePrefix, authHeader]
   );
 
-  // Choose zoom level from camera scale (PDF pts → CSS px)
   const pickZ = (scale: number) => {
-    // At scale 1, 1pt = 1px. Tile z maps page width to TILE*2^z px at that z.
     const desiredPx = widthPts * scale;
     let z = 0;
     for (let i = 0; i <= maxZoom; i++) {
@@ -107,6 +135,61 @@ export default function TileViewport({
     }
     return z;
   };
+
+  function finishPoly() {
+    const points = draftRef.current;
+    if (points.length < 2) return;
+    const closed = tool === "polygon" || tool === "cloud" || tool === "cloud_callout";
+    if (closed && points.length < 3) return;
+    onCreateMarkup?.({
+      type: tool,
+      geometry: {
+        points,
+        text: tool.includes("callout") ? subject || "Note" : undefined,
+      },
+      style: {
+        ...style,
+        fill: tool === "highlighter" ? "rgba(250,204,21,0.35)" : style.fill,
+      },
+      subject: subject || null,
+    });
+    draftRef.current = [];
+    setDraft([]);
+    setCursor(null);
+  }
+
+  function commitBoxOrLine(start: Point, end: Point) {
+    if (["rectangle", "ellipse", "highlighter", "textbox"].includes(tool)) {
+      onCreateMarkup?.({
+        type: tool,
+        geometry: {
+          x: Math.min(start.x, end.x),
+          y: Math.min(start.y, end.y),
+          w: Math.abs(end.x - start.x),
+          h: Math.abs(end.y - start.y),
+          text: tool === "textbox" ? subject || "Text" : undefined,
+        },
+        style: {
+          ...style,
+          fill: tool === "highlighter" ? "rgba(250,204,21,0.35)" : style.fill,
+        },
+        subject: subject || null,
+      });
+    } else if (["line", "arrow", "callout"].includes(tool)) {
+      onCreateMarkup?.({
+        type: tool,
+        geometry: {
+          x1: start.x,
+          y1: start.y,
+          x2: end.x,
+          y2: end.y,
+          text: tool === "callout" ? subject || "Note" : undefined,
+        },
+        style,
+        subject: subject || null,
+      });
+    }
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -124,17 +207,13 @@ export default function TileViewport({
 
     const cam = cameraRef.current;
     const z = pickZ(cam.scale);
-    const worldScale = (tileSize * 2 ** z) / widthPts; // px at this z per PDF pt
-    // Camera maps PDF pts → screen: screen = pdf * cam.scale + cam.x
-    // Tile (tx,ty) covers PDF region...
+    const worldScale = (tileSize * 2 ** z) / widthPts;
     const pageWpx = tileSize * 2 ** z;
     const pageHpx = Math.ceil((heightPts / widthPts) * pageWpx);
     const cols = Math.ceil(pageWpx / tileSize);
     const rows = Math.ceil(pageHpx / tileSize);
-
-    // Visible PDF bounds
-    const pdfLeft = (-cam.x) / cam.scale;
-    const pdfTop = (-cam.y) / cam.scale;
+    const pdfLeft = -cam.x / cam.scale;
+    const pdfTop = -cam.y / cam.scale;
     const pdfRight = (size.w - cam.x) / cam.scale;
     const pdfBottom = (size.h - cam.y) / cam.scale;
 
@@ -146,46 +225,45 @@ export default function TileViewport({
         const tilePdfY1 = ((ty + 1) * tileSize) / worldScale;
         if (tilePdfX1 < pdfLeft - 50 || tilePdfX0 > pdfRight + 50) continue;
         if (tilePdfY1 < pdfTop - 50 || tilePdfY0 > pdfBottom + 50) continue;
-
         const img = loadTile(z, tx, ty);
         const sx = cam.x + tilePdfX0 * cam.scale;
         const sy = cam.y + tilePdfY0 * cam.scale;
         const sw = (tilePdfX1 - tilePdfX0) * cam.scale;
         const sh = (tilePdfY1 - tilePdfY0) * cam.scale;
-        if (img instanceof HTMLImageElement) {
-          ctx.drawImage(img, sx, sy, sw, sh);
-        } else {
-          // Low-res placeholder: try z=0
-          const lo = cacheRef.current.get(`0/${tx}/${ty}`);
-          if (lo instanceof HTMLImageElement) {
-            ctx.globalAlpha = 0.85;
-            ctx.drawImage(lo, sx, sy, sw, sh);
-            ctx.globalAlpha = 1;
-          } else {
-            loadTile(0, Math.min(tx, 0), Math.min(ty, 0));
-            ctx.fillStyle = "#334155";
-            ctx.fillRect(sx, sy, sw, sh);
-          }
+        if (img instanceof HTMLImageElement) ctx.drawImage(img, sx, sy, sw, sh);
+        else {
+          ctx.fillStyle = "#334155";
+          ctx.fillRect(sx, sy, sw, sh);
         }
       }
     }
 
-    // Search highlights
     if (searchQuery && textSpans.length) {
       const q = searchQuery.toLowerCase();
-      ctx.save();
       for (const span of textSpans) {
         if (!span.text.toLowerCase().includes(q)) continue;
-        const x = cam.x + span.x0 * cam.scale;
-        const y = cam.y + span.y0 * cam.scale;
-        const w = (span.x1 - span.x0) * cam.scale;
-        const h = Math.max((span.y1 - span.y0) * cam.scale, 4);
         ctx.fillStyle = "rgba(250, 204, 21, 0.45)";
-        ctx.fillRect(x, y, w, h);
+        ctx.fillRect(
+          cam.x + span.x0 * cam.scale,
+          cam.y + span.y0 * cam.scale,
+          (span.x1 - span.x0) * cam.scale,
+          Math.max((span.y1 - span.y0) * cam.scale, 4)
+        );
       }
-      ctx.restore();
+    }
+
+    for (const m of markups) {
+      drawMarkup(ctx, cam, m, m.id === selectedId);
+    }
+    if (draft.length) {
+      drawDraft(ctx, cam, tool, draft, cursor);
     }
   });
+
+  const localPoint = (e: React.PointerEvent): Point => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    return screenToPdf(cameraRef.current, e.clientX - rect.left, e.clientY - rect.top);
+  };
 
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -193,15 +271,10 @@ export default function TileViewport({
     const rect = canvasRef.current!.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    const next = Math.min(24, Math.max(0.05, cam.scale * factor));
+    const next = Math.min(24, Math.max(0.05, cam.scale * (e.deltaY < 0 ? 1.1 : 0.9)));
     const pdfX = (mx - cam.x) / cam.scale;
     const pdfY = (my - cam.y) / cam.scale;
-    cameraRef.current = {
-      scale: next,
-      x: mx - pdfX * next,
-      y: my - pdfY * next,
-    };
+    cameraRef.current = { scale: next, x: mx - pdfX * next, y: my - pdfY * next };
     bump((n) => n + 1);
   };
 
@@ -209,28 +282,82 @@ export default function TileViewport({
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-slate-800">
       <canvas
         ref={canvasRef}
-        className="h-full w-full cursor-grab active:cursor-grabbing"
+        className={`h-full w-full ${tool === "pan" ? "cursor-grab active:cursor-grabbing" : "cursor-crosshair"}`}
         onWheel={onWheel}
         onPointerDown={(e) => {
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
-          dragRef.current = {
-            ox: e.clientX,
-            oy: e.clientY,
-            cx: cameraRef.current.x,
-            cy: cameraRef.current.y,
-          };
+          if (tool === "pan") {
+            dragRef.current = {
+              ox: e.clientX,
+              oy: e.clientY,
+              cx: cameraRef.current.x,
+              cy: cameraRef.current.y,
+            };
+            return;
+          }
+          if (tool === "select") {
+            onSelect?.(null);
+            return;
+          }
+          const p = localPoint(e);
+          drawingRef.current = true;
+          if (["polyline", "polygon", "cloud", "cloud_callout"].includes(tool)) {
+            if (e.detail === 2) {
+              finishPoly();
+              return;
+            }
+            const next = [...draftRef.current, p];
+            draftRef.current = next;
+            setDraft(next);
+            return;
+          }
+          if (tool === "freehand") {
+            draftRef.current = [p];
+            setDraft([p]);
+            return;
+          }
+          draftRef.current = [p];
+          setDraft([p]);
+          setCursor(p);
         }}
         onPointerMove={(e) => {
-          if (!dragRef.current) return;
-          cameraRef.current = {
-            ...cameraRef.current,
-            x: dragRef.current.cx + (e.clientX - dragRef.current.ox),
-            y: dragRef.current.cy + (e.clientY - dragRef.current.oy),
-          };
-          bump((n) => n + 1);
+          if (tool === "pan" && dragRef.current) {
+            cameraRef.current = {
+              ...cameraRef.current,
+              x: dragRef.current.cx + (e.clientX - dragRef.current.ox),
+              y: dragRef.current.cy + (e.clientY - dragRef.current.oy),
+            };
+            bump((n) => n + 1);
+            return;
+          }
+          if (!drawingRef.current && !draftRef.current.length) return;
+          const p = localPoint(e);
+          setCursor(p);
+          if (tool === "freehand" && drawingRef.current) {
+            const next = [...draftRef.current, p];
+            draftRef.current = next;
+            setDraft(next);
+          }
         }}
         onPointerUp={() => {
           dragRef.current = null;
+          if (tool === "pan" || tool === "select") return;
+          if (["polyline", "polygon", "cloud", "cloud_callout"].includes(tool)) {
+            drawingRef.current = false;
+            return;
+          }
+          if (tool === "freehand") {
+            finishPoly();
+            drawingRef.current = false;
+            return;
+          }
+          const start = draftRef.current[0];
+          const end = cursor;
+          if (start && end) commitBoxOrLine(start, end);
+          draftRef.current = [];
+          setDraft([]);
+          setCursor(null);
+          drawingRef.current = false;
         }}
       />
     </div>

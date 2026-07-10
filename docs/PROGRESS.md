@@ -3,55 +3,32 @@
 > Update after every work session. Assume the next agent has no memory.
 
 ## Current phase
-**First-pass foundation complete:** Phase 0 ✅ · Phase 1 vertical slice ✅ · Phases 2–7 scaffolded behind flags ✅  
-**Next deep work (when continuing):** Phase 2 markup authoring UI + Tool Chest; tus; OCR worker; Yjs realtime.
+**Phase 2 — Markup engine** (authoring + list/CSV in progress / largely working)  
+Phase 0 ✅ · Phase 1 vertical slice ✅ · P2–7 stubs ✅
 
-## Completed this session
-### Phase 0
-- Monorepo, NestJS auth/orgs/invites/projects, Drizzle+RLS, Vite UI, CI, ADRs, native-dev fallback.
+## Completed
+### Phase 2 (this turn)
+- Markup draw tools on `TileViewport`: rect, ellipse, line, arrow, polyline, polygon, cloud, cloud+, freehand, highlighter, textbox, callout.
+- Toolbar (color/width/subject) + keyboard V/Esc.
+- Markup List: filter by type/status/query, resolve selected, **CSV export** (`filterMarkups` / `markupsToCsv` in shared).
+- `FEATURE_MARKUP_ENGINE` defaults **true** (override with `FEATURE_MARKUP_ENGINE=0`).
+- Round-trip API test: two of each of 10 types create→reload (`RUN_MARKUP_E2E=1`) ✅
+- Shared tests: 55 passing.
 
-### Phase 1
-- Upload → MinIO → Redis ingest → pypdfium2 tiles + text → Canvas TileViewport + search.
-- Ingest callback secured with `x-plansimple-ingest-secret` / `INGEST_CALLBACK_SECRET`.
-- Empty-text pages enqueue `plansimple:ocr` (OCR implementation still stub).
+### Still open for full Phase 2 acceptance
+- PDF export / flatten / re-import of annotations (worker).
+- Tool Chest (save reusable tools / org shared sets).
+- Stamp tool with dynamic fields.
+- Layers toggle UI (layer field exists).
+- Playwright GUI draw demo video.
 
-### Scaffolding (flags default off)
-- **Markups API** CRUD + bulk status + audit log; cloud path generator in `@plansimple/shared`.
-- **Sessions API** create/list/end stubs.
-- **Workflows API** RFI / submittal / punch-item stubs.
-- **AI worker** `/v1/sheet-index`, `/v1/nl-search`, `/v1/draft-rfi` (503 without Anthropic key).
-- Web: `FeatureFlagGate`, `MarkupListPanel` (shown when `FEATURE_MARKUP_ENGINE=1`).
-
-### Seed / fixtures
-- `scripts/generate-fixture-pdfs.py` → architectural / structural / MEP sets.
-- `scripts/seed-drawing-sets.ts` uploads + enqueues ingest.
-- All three demo sets processed to `ready` on demo project.
-
-### Tests
-- Shared: 52 unit tests.
-- RLS: 4/4 with `RUN_DB_TESTS=1`.
-- Playwright E2E (`E2E=1`): 3/3 passed (signup, demo login, upload→tiles→text search).
-
-## Known issues
-- Docker Compose overlay whiteout fails on this agent VM — use native Postgres/Redis + MinIO binary.
-- Full tus / WebGL / OCR / Yjs / Bluebeam-parity markups not done.
-- Keep a single API + docproc process; stale processes caused EADDRINUSE / missing routes.
-
-## How to run
-```
-# Postgres+Redis native, MinIO :9000
-export DATABASE_URL=postgresql://plansimple:plansimple@localhost:5432/plansimple
-export STORAGE_DRIVER=s3 S3_ENDPOINT=http://127.0.0.1:9000 INGEST_CALLBACK_SECRET=dev-ingest-secret ...
-node apps/api/dist/main.js
-cd workers/docproc && python3 -m app.main
-pnpm --filter @plansimple/web dev
-pnpm seed:drawings   # optional re-seed
-```
-Demo: `demo@plansimple.dev` / `plansimple123`
+## How to demo markups
+1. Login `demo@plansimple.dev` / `plansimple123`
+2. Open Demo Office Building → pick a ready sheet
+3. Use toolbar to draw; Markup List updates; Export CSV
 
 ## Next steps
-1. Phase 2: draw tools on TileViewport overlay; Markup List filters/CSV; enable `FEATURE_MARKUP_ENGINE`.
-2. tus resumable uploads; per-page SSE progress.
-3. OCR worker consuming `plansimple:ocr`.
-4. Phase 3 Yjs wiring in `apps/realtime`.
-5. Create/merge PR when ready (draft PR may need manual approval in settings).
+1. Annotation PDF export (pikepdf) for flatten/original+markups.
+2. Tool Chest persistence.
+3. Phase 3 Yjs realtime for live multiplayer markups.
+4. tus + OCR worker.

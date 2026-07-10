@@ -7,7 +7,7 @@ import { Public } from "../common/auth.decorators";
  * Org-scoped overrides will read `feature_flags` table later.
  */
 const DEFAULT_FLAGS: Record<string, boolean> = {
-  markup_engine: false,
+  markup_engine: true, // Phase 2 enabled for local/demo; override with FEATURE_MARKUP_ENGINE=0
   realtime_sessions: false,
   measurements: false,
   revision_compare: false,
