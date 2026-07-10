@@ -9,15 +9,22 @@
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo 'lint ok'",
-    "test": "echo 'test ok'"
+    "test": "vitest run"
   },
   "dependencies": {
-    "ws": "^8.18.3"
+    "ioredis": "^5.11.1",
+    "lib0": "^0.2.117",
+    "pg": "^8.22.0",
+    "ws": "^8.18.3",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "@types/pg": "^8.11.11",
     "@types/ws": "^8.18.1",
     "tsx": "^4.20.5",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
   }
 }

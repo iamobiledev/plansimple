@@ -8,6 +8,7 @@ import MarkupToolbar from "../viewer/MarkupToolbar";
 import { FeatureFlagGate, useFeatureFlags } from "../components/FeatureFlags";
 import MarkupListPanel from "../components/MarkupListPanel";
 import ToolChestPanel from "../components/ToolChestPanel";
+import { useCollabRoom } from "../viewer/useCollab";
 import {
   DEFAULT_STYLE,
   type DrawTool,
@@ -43,6 +44,8 @@ export default function ProjectPage() {
   const qc = useQueryClient();
   const flags = useFeatureFlags();
   const markupEnabled = Boolean(flags.data?.markup_engine);
+  const realtimeEnabled = Boolean(flags.data?.realtime_sessions);
+  const user = useAuthStore((s) => s.user);
 
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -113,10 +116,24 @@ export default function ProjectPage() {
       apiFetch<Markup[]>(`/organizations/${orgId}/revisions/${revisionId}/markups`),
   });
 
-  const pageMarkups = useMemo(
-    () => (markupsQuery.data ?? []).filter((m) => m.pageId === activePage?.id),
-    [markupsQuery.data, activePage?.id]
-  );
+  const roomName =
+    orgId && revisionId ? `org:${orgId}:revision:${revisionId}` : null;
+  const collab = useCollabRoom({
+    enabled: Boolean(realtimeEnabled && roomName),
+    roomName,
+    user,
+  });
+
+  const pageMarkups = useMemo(() => {
+    const byId = new Map<string, Markup>();
+    for (const m of markupsQuery.data ?? []) {
+      if (m.pageId === activePage?.id) byId.set(m.id, m);
+    }
+    for (const m of collab.remoteMarkups) {
+      if (!activePage?.id || m.pageId === activePage.id) byId.set(m.id, m);
+    }
+    return Array.from(byId.values());
+  }, [markupsQuery.data, collab.remoteMarkups, activePage?.id]);
 
   useEffect(() => {
     if (!orgId || !activeId || !activePage || activePage.processingStatus !== "ready") {
@@ -197,6 +214,21 @@ export default function ProjectPage() {
         layer: "Default",
         status: "open",
       },
+    }).then((created) => {
+      const row = created as Markup;
+      collab.publishMarkup({
+        ...row,
+        pageId: activePage.id,
+        revisionId,
+        type: payload.type,
+        geometry,
+        style: payload.style,
+        subject: payload.subject,
+        status: "open",
+        layer: "Default",
+        authorId: user?.id ?? null,
+        createdAt: new Date().toISOString(),
+      });
     });
     await qc.invalidateQueries({ queryKey: ["markups", orgId, revisionId] });
   }
@@ -373,7 +405,30 @@ export default function ProjectPage() {
             />
             {search && <span className="text-xs text-slate-500">{searchHits} hits</span>}
             <span className="text-xs text-slate-400">V pan · Esc select · wheel zoom</span>
+            {realtimeEnabled && (
+              <span
+                className={`text-xs font-semibold ${
+                  collab.connected ? "text-emerald-600" : "text-amber-600"
+                }`}
+              >
+                {collab.connected ? `Live · ${collab.peers.length} peer(s)` : "Connecting…"}
+              </span>
+            )}
           </div>
+          {realtimeEnabled && collab.peers.length > 0 && (
+            <div className="absolute right-3 top-3 z-10 flex gap-1">
+              {collab.peers.map((p) => (
+                <span
+                  key={p.clientId}
+                  className="rounded-full px-2 py-1 text-[10px] font-bold text-white"
+                  style={{ background: p.color }}
+                  title={p.name}
+                >
+                  {p.name.slice(0, 2).toUpperCase()}
+                </span>
+              ))}
+            </div>
+          )}
           {activePage && tilePrefix && activePage.processingStatus === "ready" ? (
             <TileViewport
               widthPts={activePage.widthPts}
