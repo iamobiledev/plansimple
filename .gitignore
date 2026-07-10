@@ -35,3 +35,5 @@ __pycache__/
 # Playwright
 e2e/test-results/
 e2e/playwright-report/
+.vercel-prod-args.json
+apps/web/.vercel-deploy-args.json
