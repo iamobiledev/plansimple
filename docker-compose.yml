@@ -1,0 +1,204 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: plansimple
+      POSTGRES_PASSWORD: plansimple
+      POSTGRES_DB: plansimple
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plansimple -d plansimple"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-plansimple}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-plansimplesecret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "mc alias set local http://minio:9000
+      ${S3_ACCESS_KEY:-plansimple} ${S3_SECRET_KEY:-plansimplesecret}
+      && mc mb --ignore-existing local/${S3_BUCKET:-plansimple}"
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8025/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+    env_file:
+      - .env.example
+    environment:
+      API_PORT: ${API_PORT:-3000}
+      DATABASE_URL: postgresql://plansimple:plansimple@postgres:5432/plansimple
+      DATABASE_URL_UNPOOLED: postgresql://plansimple:plansimple@postgres:5432/plansimple
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-plansimple}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-plansimplesecret}
+      S3_BUCKET: ${S3_BUCKET:-plansimple}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:5173}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3000}
+      PUBLIC_REALTIME_URL: ${PUBLIC_REALTIME_URL:-ws://localhost:1234}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.web
+    env_file:
+      - .env.example
+    environment:
+      WEB_PORT: ${WEB_PORT:-5173}
+      API_PROXY_TARGET: http://api:3000
+    command: pnpm --filter @plansimple/web dev --host 0.0.0.0 --port 5173
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://localhost:5173').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  realtime:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.realtime
+    env_file:
+      - .env.example
+    environment:
+      REALTIME_PORT: ${REALTIME_PORT:-1234}
+    ports:
+      - "${REALTIME_PORT:-1234}:1234"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://localhost:1234/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  docproc:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.docproc
+    env_file:
+      - .env.example
+    environment:
+      REDIS_URL: redis://redis:6379
+      DOCPROC_PORT: ${DOCPROC_PORT:-8001}
+    ports:
+      - "${DOCPROC_PORT:-8001}:8001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  ai:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.ai
+    env_file:
+      - .env.example
+    environment:
+      REDIS_URL: redis://redis:6379
+      AI_PORT: ${AI_PORT:-8002}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "${AI_PORT:-8002}:8002"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=2)\""
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+  minio-data:

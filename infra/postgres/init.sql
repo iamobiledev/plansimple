@@ -1,0 +1,2 @@
+-- PlanSimple database bootstrap.
+-- Drizzle migrations apply extensions and schema objects.

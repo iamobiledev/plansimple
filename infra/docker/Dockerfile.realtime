@@ -1,0 +1,16 @@
+FROM node:22-bookworm-slim
+
+WORKDIR /app
+
+RUN corepack enable
+
+COPY package.json pnpm-workspace.yaml turbo.json ./
+COPY apps/realtime/package.json apps/realtime/package.json
+COPY packages/tsconfig/package.json packages/tsconfig/package.json
+RUN pnpm install --frozen-lockfile=false
+
+COPY . .
+RUN pnpm --filter @plansimple/realtime build
+
+EXPOSE 1234
+CMD ["pnpm", "--filter", "@plansimple/realtime", "start"]
