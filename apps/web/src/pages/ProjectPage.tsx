@@ -8,6 +8,7 @@ import MarkupToolbar from "../viewer/MarkupToolbar";
 import { FeatureFlagGate, useFeatureFlags } from "../components/FeatureFlags";
 import MarkupListPanel from "../components/MarkupListPanel";
 import ToolChestPanel from "../components/ToolChestPanel";
+import AiPanel from "../components/AiPanel";
 import { useCollabRoom } from "../viewer/useCollab";
 import OverlayCompare from "../viewer/OverlayCompare";
 import {
@@ -53,6 +54,9 @@ export default function ProjectPage() {
   const realtimeEnabled = Boolean(flags.data?.realtime_sessions);
   const measurementsEnabled = Boolean(flags.data?.measurements);
   const compareEnabled = Boolean(flags.data?.revision_compare);
+  const aiEnabled = Boolean(
+    flags.data?.ai_sheet_indexing || flags.data?.ai_nl_search || flags.data?.ai_rfi_draft
+  );
   const user = useAuthStore((s) => s.user);
   const [compareMode, setCompareMode] = useState(false);
   const [compareOpacity, setCompareOpacity] = useState(0.55);
@@ -521,6 +525,16 @@ export default function ProjectPage() {
             )}
           </div>
           <div className="border-t border-slate-200 p-3 space-y-3">
+            {aiEnabled && orgId && projectId && (
+              <AiPanel
+                orgId={orgId}
+                projectId={projectId}
+                documentId={activeId}
+                onOpenPage={(docId, pageNumber) => {
+                  void loadDetail(docId).then(() => setPageIndex(Math.max(0, pageNumber - 1)));
+                }}
+              />
+            )}
             <FeatureFlagGate flag="markup_engine">
               <ToolChestPanel
                 orgId={orgId || ""}

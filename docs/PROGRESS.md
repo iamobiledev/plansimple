@@ -3,27 +3,27 @@
 > Update after every work session. Assume the next agent has no memory.
 
 ## Current phase
-**Phase 4 — Measurement & takeoff** vertical slice complete (calibrate + length/area/count + 0.5% accuracy).  
-Phases 0–3 slices also landed.
+**Phase 5 — Revisions / compare / overlay** vertical slice complete.  
+Phases 0–5 slices on branch.
 
-## Completed (Phase 4)
-- `PATCH /organizations/:orgId/pages/:pageId/calibration` stores `scale_calibration` (+ pixelsPerUnit) and recalculates measurement markups.
-- Tools: Calibrate, Length, PolyLength, Area, Count (as markup types with live qty labels).
-- Markup create auto-fills `measurement` jsonb from page calibration.
-- Markup List shows Qty column; CSV export still available.
-- Accuracy unit test + API smoke: 20 pts/ft → 20×15 room = **300 SF** (0% error) ✅
-- `measurements` feature flag default **true**.
+## Phase 5 completed
+- Upload new revision (`POST .../documents/:id/revisions/upload`) — immutable version bump.
+- Slip-sheeting: markups copied to matching page numbers with `style.carriedForward`.
+- Diff worker (`plansimple:diff`): block pixel compare of z0 tiles → Diff-layer cloud hotspots; flags carried markups intersecting changes (`needsReview`).
+- Overlay compare UI (red/blue + opacity) when ≥2 revisions.
+- Proven on sample-plans rev B (moved wall): **22 carried, 12 hotspots, 1 flagged** ✅
 
-## Prior phases
-- P0 foundation, P1 tiles, P2 markups/export/toolchest, P3 Yjs realtime.
+## Prior
+P0 foundation · P1 tiles · P2 markups/export/toolchest · P3 Yjs · P4 calibrate/measure.
 
 ## Still open
-- Volume / cutouts / region scales / preset scales UI.
-- Phase 5 revision compare; Phase 6 AI; Phase 7 hardening.
-- Playwright multiplayer offline reconnect.
+- Phase 6 AI (sheet index, NL search, etc.)
+- Phase 7 hardening / Stripe / load test
+- Playwright multiplayer offline reconnect
+- True PDF Annots (vs drawn content export)
 
 ## Demo
-Calibrate with two clicks + `20'-0"`, then Area tool around a known rectangle.
+Upload a revised PDF on a document → wait for ready → Overlay compare; Markup List shows Diff layer + flagged items.
 
 ## Next
-Phase 5 revisions/compare overlay, or deepen Phase 4 presets/cutouts.
+Phase 6 AI features behind flags.

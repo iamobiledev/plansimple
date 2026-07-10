@@ -11,11 +11,11 @@ const DEFAULT_FLAGS: Record<string, boolean> = {
   realtime_sessions: true, // Phase 3 Yjs sessions; override with FEATURE_REALTIME_SESSIONS=0
   measurements: true, // Phase 4 takeoff; override with FEATURE_MEASUREMENTS=0
   revision_compare: true, // Phase 5 overlay/diff; override FEATURE_REVISION_COMPARE=0
-  ai_sheet_indexing: false,
-  ai_nl_search: false,
-  ai_diff_narration: false,
+  ai_sheet_indexing: true, // heuristic always; Claude when key set
+  ai_nl_search: true,
+  ai_diff_narration: true,
   ai_takeoff: false,
-  ai_rfi_draft: false,
+  ai_rfi_draft: true,
   ai_session_summary: false,
   workflows_rfi: false,
   billing: false,

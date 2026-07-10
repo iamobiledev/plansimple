@@ -15,6 +15,7 @@ import { WorkflowsModule } from "./workflows/workflows.module";
 import { ToolChestModule } from "./toolchest/toolchest.module";
 import { ExportModule } from "./export/export.module";
 import { PagesModule } from "./pages/pages.module";
+import { AiModule } from "./ai/ai.module";
 import { JwtAuthGuard } from "./auth/jwt-auth.guard";
 
 @Module({
@@ -32,6 +33,7 @@ import { JwtAuthGuard } from "./auth/jwt-auth.guard";
     WorkflowsModule,
     ToolChestModule,
     ExportModule,
+    AiModule,
     FlagsModule,
     HealthModule,
   ],
