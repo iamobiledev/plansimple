@@ -2,27 +2,50 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
 
-const connectionString =
-  process.env.DATABASE_URL ||
-  "postgresql://neondb_owner@localhost:5432/neondb";
+export type Db = ReturnType<typeof drizzle<typeof schema>>;
 
 const globalForDb = globalThis as unknown as { pool?: Pool };
 
-export const pool =
-  globalForDb.pool ??
-  new Pool({
+function requireDatabaseUrl(): string {
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL is not set. Add it in the Vercel project Environment Variables (Neon pooled connection string)."
+    );
+  }
+  return url;
+}
+
+export function getPool(): Pool {
+  if (globalForDb.pool) return globalForDb.pool;
+  const connectionString = requireDatabaseUrl();
+  const pool = new Pool({
     connectionString,
     ssl: connectionString.includes("sslmode=require")
       ? { rejectUnauthorized: false }
       : undefined,
     max: 10,
   });
+  globalForDb.pool = pool;
+  return pool;
+}
 
-if (process.env.NODE_ENV !== "production") globalForDb.pool = pool;
+export function getDb(): Db {
+  return drizzle(getPool(), { schema });
+}
 
-export const db = drizzle(pool, { schema });
+/** @deprecated prefer getDb() — kept for call sites that import `db` */
+export const db = new Proxy({} as Db, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getDb() as object, prop, receiver);
+  },
+});
 
-export type Db = typeof db;
+export const pool = new Proxy({} as Pool, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getPool() as object, prop, receiver);
+  },
+});
 
 /** Run work inside a transaction with RLS tenant context. */
 export async function withTenant<T>(
@@ -31,7 +54,7 @@ export async function withTenant<T>(
   fn: (db: Db) => Promise<T>,
   opts?: { bypassRls?: boolean }
 ): Promise<T> {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     await client.query("BEGIN");
     if (opts?.bypassRls) {

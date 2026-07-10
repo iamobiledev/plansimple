@@ -4,6 +4,20 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+async function readJsonSafe(res: Response): Promise<{ message?: string } & Record<string, unknown>> {
+  const text = await res.text();
+  if (!text) {
+    return {
+      message: `Server returned empty ${res.status} response. Check Vercel env vars (DATABASE_URL, SESSION_SECRET).`,
+    };
+  }
+  try {
+    return JSON.parse(text) as { message?: string } & Record<string, unknown>;
+  } catch {
+    return { message: text.slice(0, 200) || `Login failed (${res.status})` };
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("demo@plansimple.dev");
@@ -21,8 +35,8 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Login failed");
+      const data = await readJsonSafe(res);
+      if (!res.ok) throw new Error(data.message || `Login failed (${res.status})`);
       router.push("/");
       router.refresh();
     } catch (err) {
@@ -62,11 +76,23 @@ export default function LoginPage() {
           <form className="mt-8 space-y-5" onSubmit={onSubmit}>
             <label className="block space-y-2">
               <span className="label">Email</span>
-              <input className="field" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input
+                className="field"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </label>
             <label className="block space-y-2">
               <span className="label">Password</span>
-              <input className="field" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <input
+                className="field"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
             </label>
             {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
             <button className="btn-primary w-full" disabled={busy}>
