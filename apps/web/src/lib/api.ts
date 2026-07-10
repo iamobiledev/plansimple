@@ -53,12 +53,16 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const { json, headers, ...init } = options;
   const token = readAccessToken();
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: "include",
     headers: {
       Accept: "application/json",
-      ...(json === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(json === undefined || isFormData
+        ? {}
+        : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },

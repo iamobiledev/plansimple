@@ -100,3 +100,5 @@ export const processingStatusSchema = z.enum([
 ]);
 
 export const ocrStatusSchema = z.enum(["not_needed", "queued", "processing", "done", "failed"]);
+
+export * from "./documents.js";
