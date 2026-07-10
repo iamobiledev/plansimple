@@ -2,7 +2,7 @@
 
 PlanSimple is a lightweight, browser-first quantity takeoff tool for construction estimators — think a focused alternative to Bluebeam Revu that does one thing well: measuring quantities off PDF plan sheets, with AI-assisted symbol counting and room detection powered by Claude.
 
-![Stack](https://img.shields.io/badge/stack-React%20%2B%20Express%20%2B%20Prisma-3b82c4)
+Built as a single **Next.js** application that deploys entirely on **Vercel**.
 
 ## What it does
 
@@ -20,17 +20,17 @@ PlanSimple is a lightweight, browser-first quantity takeoff tool for constructio
   - *AI Area* — click inside a room; Claude traces the enclosed boundary and returns a ghost polygon whose vertices you can drag before accepting.
 - **Quantity summary & export** — live summary of every condition (quantity, unit, extended cost), roll-up or per-sheet grouping, CSV export.
 
-## Quick start
+## Quick start (local)
 
 Prerequisites: **Node 20+**, **PostgreSQL 14+**.
 
 ```bash
-# 1. Install dependencies (npm workspaces: server + client)
+# 1. Install dependencies (postinstall runs prisma generate)
 npm install
 
-# 2. Configure the server
-cp server/.env.example server/.env
-# edit server/.env — at minimum DATABASE_URL; add ANTHROPIC_API_KEY for AI features
+# 2. Configure
+cp .env.example .env
+# edit .env — at minimum DATABASE_URL; add ANTHROPIC_API_KEY for AI features
 
 # 3. Create the database schema
 npm run db:migrate        # or: npm run db:push
@@ -38,11 +38,11 @@ npm run db:migrate        # or: npm run db:push
 # 4. Seed demo data (demo user, project, generated sample floor plan)
 npm run seed
 
-# 5. Run both servers (API on :4000, Vite on :5173)
+# 5. Run the app on http://localhost:3000
 npm run dev
 ```
 
-Open **http://localhost:5173** and sign in with the seeded account:
+Sign in with the seeded account:
 
 ```
 demo@plansimple.dev / plansimple123
@@ -50,7 +50,7 @@ demo@plansimple.dev / plansimple123
 
 The seed creates a "Demo Office Building" project with a two-page generated plan set. Sheet **A-101** is pre-calibrated so you can measure immediately; sheet **A-102** is left uncalibrated so you can try the Calibrate tool against its `30'-0"` dimension string.
 
-If you don't have a local Postgres, a database is one command away with Docker:
+No local Postgres? One command with Docker:
 
 ```bash
 docker run -d --name plansimple-db -p 5432:5432 \
@@ -58,18 +58,38 @@ docker run -d --name plansimple-db -p 5432:5432 \
   postgres:16
 ```
 
-## Environment variables
+## Deploying to Vercel
 
-All server configuration lives in `server/.env` (see `server/.env.example`):
+The app is designed to run entirely on Vercel: Next.js route handlers for the API, a hosted Postgres for data, and Vercel Blob for sheet PDFs (serverless filesystems are ephemeral, so the storage layer switches to Blob automatically when a Blob store is connected).
+
+1. **Push this repo to GitHub** and import it in [vercel.com/new](https://vercel.com/new) (or run `npx vercel` from the repo). Next.js is auto-detected; no build settings needed.
+2. **Database** — create a Postgres database (Vercel Marketplace → Neon, or any hosted Postgres) and set `DATABASE_URL` in the project's environment variables. Use the **pooled** connection string for serverless.
+3. **Blob storage** — in the Vercel project: Storage → Create → Blob, and connect it. Vercel injects `BLOB_READ_WRITE_TOKEN` automatically; the app detects it and stores PDFs in Blob.
+4. **Environment variables** — set `SESSION_SECRET` (32+ chars, `openssl rand -base64 32`) and optionally `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` for the AI features.
+5. **Migrate & seed** — run once against the production database from your machine:
+   ```bash
+   DATABASE_URL="<prod pooled url>" npx prisma migrate deploy
+   DATABASE_URL="<prod url>" BLOB_READ_WRITE_TOKEN="<token>" npm run seed   # optional demo data
+   ```
+   (Alternatively set the Vercel build command to `prisma migrate deploy && prisma generate && next build` to migrate on deploy.)
+
+### Vercel platform notes
+
+- **Upload size** — Vercel serverless functions cap request bodies at ~4.5 MB, so PDF uploads above that fail in production (local dev is unaffected). The clean fix for large plan sets is client-side upload straight to Blob (`@vercel/blob/client`) — planned, not yet built.
+- **Function duration** — the AI and upload routes declare `maxDuration = 60`; vision calls over a full sheet typically take 10–30 s.
+- **Sessions** are stateless encrypted cookies (iron-session), so no session store is needed across serverless invocations.
+- **Blob privacy** — Vercel Blob URLs are public but unguessable (UUID keys); the app only ever hands clients the auth-gated `/api/files/[key]` route.
+
+## Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | ✅ | PostgreSQL connection string, e.g. `postgresql://plansimple:plansimple@localhost:5432/plansimple` |
-| `SESSION_SECRET` | recommended | Secret for signing session cookies (defaults to a dev value) |
-| `ANTHROPIC_API_KEY` | for AI features | Claude API key. Everything except AI Count / AI Area works without it; AI endpoints return a clear 503 if unset |
+| `DATABASE_URL` | ✅ | PostgreSQL connection string (pooled, for serverless) |
+| `SESSION_SECRET` | recommended | 32+ char secret for iron-session cookie encryption |
+| `ANTHROPIC_API_KEY` | for AI features | Claude API key. Everything else works without it; AI endpoints return a clear 503 if unset |
 | `ANTHROPIC_MODEL` | no | Vision model for AI takeoff (default `claude-opus-4-8`) |
-| `PORT` | no | API port (default `4000`; the Vite dev server proxies `/api` there) |
-| `FILE_STORAGE_DIR` | no | Where sheet PDFs are stored (default `server/uploads`) |
+| `BLOB_READ_WRITE_TOKEN` | on Vercel | Injected by the connected Blob store; switches file storage from local disk to Vercel Blob |
+| `FILE_STORAGE_DIR` | no | Local-dev PDF directory (default `./uploads`) |
 
 ## Tests
 
@@ -79,33 +99,37 @@ npm test          # vitest — geometry, scale/unit parsing, CSV summary logic (
 
 The measurement math is deliberately isolated from the UI in pure, unit-tested modules:
 
-- `client/src/lib/geometry.ts` — polyline length, shoelace polygon area, perimeter, centroid
-- `client/src/lib/scale.ts` — calibration, pixel↔real-world conversion, imperial/metric parsing & formatting
-- `client/src/lib/csv.ts` — quantity summary aggregation and CSV serialization
+- `src/lib/geometry.ts` — polyline length, shoelace polygon area, perimeter, centroid
+- `src/lib/scale.ts` — calibration, pixel↔real-world conversion, imperial/metric parsing & formatting
+- `src/lib/csv.ts` — quantity summary aggregation and CSV serialization
 
 ## Architecture
 
 ```
 plansimple/
-├── server/                  Express + Prisma API (TypeScript, ESM)
-│   ├── prisma/schema.prisma   User / Project / Sheet / Condition / Measurement
-│   ├── prisma/seed.ts         demo data + generates a sample floor-plan PDF with pdf-lib
-│   └── src/
-│       ├── index.ts           app entry: express-session auth, routes
-│       ├── routes/            auth, projects, sheets, conditions, measurements, ai, files
-│       └── storage/storage.ts FileStorage interface + LocalDiskStorage (S3-swappable)
-└── client/                  React + Vite SPA
-    └── src/
-        ├── lib/               pure math (tested): geometry, scale, csv
-        ├── pdf.ts             pdf.js: page rendering, thumbnails, AI snapshots
-        ├── store.ts           zustand store: optimistic CRUD, undo/redo command stack
-        └── components/        Viewer (Konva), sidebars, toolbar, dialogs
+├── prisma/                  schema (User/Project/Sheet/Condition/Measurement),
+│                            migrations, seed (generates a demo plan PDF with pdf-lib)
+└── src/
+    ├── app/
+    │   ├── page.tsx           client-only entry (dynamic import, no SSR for canvas code)
+    │   └── api/               route handlers: auth, projects, sheets, conditions,
+    │                          measurements, ai/count, ai/suggest-area, files
+    ├── server/                server-only modules
+    │   ├── db.ts                Prisma singleton
+    │   ├── session.ts           iron-session (stateless encrypted cookies)
+    │   ├── storage.ts           FileStorage: LocalDiskStorage | VercelBlobStorage
+    │   ├── pdf-split.ts         multi-page PDF → per-sheet single-page PDFs
+    │   └── ai.ts                Anthropic client + vision helpers
+    ├── lib/                   pure math (tested): geometry, scale, csv
+    ├── pdf.ts                 pdf.js: page rendering, thumbnails, AI snapshots
+    ├── store.ts               zustand: optimistic CRUD, undo/redo command stack
+    └── components/            Viewer (Konva), sidebars, toolbar, dialogs
 ```
 
 ### Key design decisions
 
 - **Coordinate system** — all geometry is stored in *PDF base coordinates* (the page viewport at scale 1). Zoom/pan never changes stored data; `Sheet.scalePixelsPerUnit` maps base pixels to feet or meters.
-- **Sheet splitting** — on upload, each PDF page is physically split into its own single-page PDF (pdf-lib) and stored via the `FileStorage` interface, so each `Sheet` row has its own `fileUrl`. Swap `LocalDiskStorage` for an S3 implementation later without touching routes.
+- **Sheet splitting** — on upload, each PDF page is physically split into its own single-page PDF (pdf-lib) and stored via the `FileStorage` interface, so each `Sheet` row has its own `fileUrl`.
 - **One Konva stage, two layers** — the rendered PDF page is a Konva image on a non-interactive layer beneath the annotation layer, so pan/zoom sync is free and hit-testing only sees measurements.
 - **Optimistic UI + undo/redo** — measurements appear instantly with a temp id, persist in the background, and the id is swapped on response. Undo/redo is a command stack; since re-creating a deleted measurement yields a new server id, commands resolve ids through an alias map.
 - **Counts are individual rows** — each count click is its own `Measurement` (one point, value 1), which makes select/move/delete/undo uniform across all three tool types.
@@ -114,20 +138,20 @@ plansimple/
 
 ### API surface
 
-All endpoints are session-authenticated JSON under `/api`:
+All endpoints are session-authenticated JSON route handlers under `/api`:
 
 ```
 POST /api/auth/register|login|logout   GET /api/auth/me
-GET|POST /api/projects                 GET|DELETE /api/projects/:id
-GET  /api/projects/:id/measurements    (project-wide, for the summary)
-POST /api/sheets/upload/:projectId     (multipart PDF; splits into sheets)
-PATCH|DELETE /api/sheets/:id           GET /api/sheets/:id/measurements
-POST /api/conditions/project/:id       PATCH|DELETE /api/conditions/:id
-POST /api/measurements                 PATCH|DELETE /api/measurements/:id
+GET|POST /api/projects                 GET|DELETE /api/projects/[id]
+GET  /api/projects/[id]/measurements   (project-wide, for the summary)
+POST /api/sheets/upload/[projectId]    (multipart PDF; splits into sheets)
+PATCH|DELETE /api/sheets/[id]          GET /api/sheets/[id]/measurements
+POST /api/conditions/project/[id]      PATCH|DELETE /api/conditions/[id]
+POST /api/measurements                 PATCH|DELETE /api/measurements/[id]
 POST /api/ai/count                     POST /api/ai/suggest-area
-GET  /api/files/:key                   (auth-gated sheet PDFs)
+GET  /api/files/[key]                  (auth-gated sheet PDFs)
 ```
 
 ## Out of scope (MVP)
 
-Real-time collaboration, payments, mobile apps, full markup suite (clouds/callouts/stamps), sheet version compare, and OCR auto-calibration are intentionally not built.
+Real-time collaboration, payments, mobile apps, full markup suite (clouds/callouts/stamps), sheet version compare, OCR auto-calibration, and direct-to-Blob client uploads for >4.5 MB plan sets are intentionally not built yet.
