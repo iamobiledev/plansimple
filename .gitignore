@@ -1,14 +1,37 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Builds
 dist/
 build/
-.env*
-!.env.example
-.env.local
-uploads/
-*.log
-.DS_Store
+.next/
+.turbo/
 coverage/
 *.tsbuildinfo
-.next/
-next-env.d.ts
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Uploads / local data
+uploads/
+data/
+*.log
+.DS_Store
+
+# IDE / OS
 .vercel
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+.pytest_cache/
+
+# Playwright
+e2e/test-results/
+e2e/playwright-report/

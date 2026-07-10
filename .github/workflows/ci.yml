@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "allen-*", "cursor/**"]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: plansimple
+          POSTGRES_PASSWORD: plansimple
+          POSTGRES_DB: plansimple
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U plansimple -d plansimple"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://plansimple:plansimple@localhost:5432/plansimple
+      DATABASE_URL_UNPOOLED: postgresql://plansimple:plansimple@localhost:5432/plansimple
+      JWT_ACCESS_SECRET: ci-access-secret-at-least-32-characters!!
+      JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-characters!
+      RUN_DB_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @plansimple/shared build
+      - run: pnpm --filter @plansimple/api db:migrate
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter @plansimple/web build
+      - run: pnpm --filter @plansimple/realtime build
+      - run: pnpm --filter @plansimple/api build

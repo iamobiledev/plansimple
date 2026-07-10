@@ -1,47 +1,22 @@
 {
   "name": "plansimple",
   "private": true,
-  "version": "0.2.0",
-  "description": "PlanSimple — web-based construction takeoff with AI-assisted measurement",
+  "version": "0.3.0",
+  "description": "PlanSimple — cloud-native construction document collaboration",
+  "packageManager": "pnpm@10.33.3",
   "scripts": {
-    "dev": "next dev",
-    "build": "prisma generate && next build",
-    "start": "next start",
-    "postinstall": "prisma generate",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "db:migrate": "prisma migrate dev",
-    "db:push": "prisma db push",
-    "db:deploy": "prisma migrate deploy",
-    "seed": "prisma db seed"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.110.0",
-    "@prisma/client": "^6.5.0",
-    "@vercel/blob": "^0.27.3",
-    "bcryptjs": "^2.4.3",
-    "iron-session": "^8.0.4",
-    "konva": "^9.3.18",
-    "next": "^15.2.3",
-    "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^4.10.38",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-konva": "^19.0.3",
-    "zod": "^3.24.2",
-    "zustand": "^5.0.3"
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "pnpm --filter @plansimple/e2e test",
+    "db:migrate": "pnpm --filter @plansimple/api db:migrate",
+    "db:generate": "pnpm --filter @plansimple/api db:generate",
+    "seed": "pnpm --filter @plansimple/api seed"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/node": "^22.13.10",
-    "@types/react": "^19.0.12",
-    "@types/react-dom": "^19.0.4",
-    "prisma": "^6.5.0",
-    "tsx": "^4.19.3",
-    "typescript": "^5.8.2",
-    "vitest": "^3.0.9"
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.2"
   }
 }
