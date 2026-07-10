@@ -1,15 +1,16 @@
 import { Injectable, NotFoundException, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, desc } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import Redis from "ioredis";
 import type { InitiateUploadInput } from "@plansimple/shared";
 import { DatabaseService } from "../db/database.service";
-import { documents, revisions, pages, auditLog } from "../db/schema";
+import { documents, revisions, pages, markups, auditLog } from "../db/schema";
 import { OrgsService } from "../orgs/orgs.service";
 import { StorageService } from "../storage/storage.service";
 
 const INGEST_QUEUE = "plansimple:ingest";
+const DIFF_QUEUE = "plansimple:diff";
 
 @Injectable()
 export class DocumentsService {
@@ -124,6 +125,284 @@ export class DocumentsService {
     }
 
     return { documentId, revisionId, processingStatus: "processing" };
+  }
+
+  /** Upload a new immutable revision of an existing document. */
+  async uploadRevision(
+    organizationId: string,
+    documentId: string,
+    userId: string,
+    file: { buffer: Buffer; originalname?: string; size: number; mimetype?: string }
+  ) {
+    await this.orgs.requireRole(organizationId, userId, ["owner", "admin", "editor"]);
+
+    const { revisionId, storageKey, versionNumber, previousRevisionId, projectId } =
+      await this.db.withTenant(organizationId, userId, async (db) => {
+        const doc = await db.query.documents.findFirst({
+          where: and(eq(documents.id, documentId), eq(documents.organizationId, organizationId)),
+        });
+        if (!doc) throw new NotFoundException("Document not found");
+
+        const latest = await db
+          .select()
+          .from(revisions)
+          .where(eq(revisions.documentId, documentId))
+          .orderBy(desc(revisions.versionNumber))
+          .limit(1);
+        const versionNumber = (latest[0]?.versionNumber ?? 0) + 1;
+        const revisionId = randomUUID();
+        const storageKey = `orgs/${organizationId}/projects/${doc.projectId}/documents/${documentId}/revisions/${revisionId}/original.pdf`;
+
+        await db.insert(revisions).values({
+          id: revisionId,
+          organizationId,
+          documentId,
+          versionNumber,
+          storageKey,
+          uploadedBy: userId,
+          supersedesRevisionId: doc.currentRevisionId,
+          processingStatus: "uploading",
+        });
+        await db
+          .update(documents)
+          .set({
+            currentRevisionId: revisionId,
+            storageKey,
+            fileSize: file.size,
+            filename: file.originalname || doc.filename,
+            processingStatus: "uploading",
+            updatedAt: new Date(),
+          })
+          .where(eq(documents.id, documentId));
+        await db.insert(auditLog).values({
+          organizationId,
+          actorId: userId,
+          action: "document.upload_revision",
+          entityType: "document",
+          entityId: documentId,
+          after: { revisionId, versionNumber },
+        });
+        return {
+          revisionId,
+          storageKey,
+          versionNumber,
+          previousRevisionId: doc.currentRevisionId,
+          projectId: doc.projectId,
+        };
+      });
+
+    await this.storage.putObject(storageKey, file.buffer, file.mimetype || "application/pdf");
+    await this.completeUpload(organizationId, userId, documentId, revisionId);
+
+    // Stash previous revision for slip-sheet after ingest
+    try {
+      await this.redis.set(
+        `plansimple:slip:${revisionId}`,
+        JSON.stringify({ previousRevisionId, organizationId, documentId }),
+        "EX",
+        86400
+      );
+    } catch (err) {
+      this.log.warn(`slip stash failed: ${err}`);
+    }
+
+    return { documentId, revisionId, versionNumber, previousRevisionId, processingStatus: "processing" };
+  }
+
+  async listRevisions(organizationId: string, documentId: string, userId: string) {
+    await this.orgs.requireRole(organizationId, userId, [
+      "owner",
+      "admin",
+      "editor",
+      "reviewer",
+      "viewer",
+    ]);
+    return this.db.withTenant(organizationId, userId, async (db) => {
+      return db
+        .select()
+        .from(revisions)
+        .where(
+          and(eq(revisions.documentId, documentId), eq(revisions.organizationId, organizationId))
+        )
+        .orderBy(desc(revisions.versionNumber));
+    });
+  }
+
+  /** Carry markups from previous revision onto new pages (position match by page number). */
+  async slipSheetMarkups(
+    organizationId: string,
+    documentId: string,
+    previousRevisionId: string,
+    newRevisionId: string
+  ) {
+    return this.db.withTenant(organizationId, null, async (db) => {
+      const oldPages = await db
+        .select()
+        .from(pages)
+        .where(eq(pages.revisionId, previousRevisionId));
+      const newPages = await db.select().from(pages).where(eq(pages.revisionId, newRevisionId));
+      const newByNum = new Map(newPages.map((p) => [p.pageNumber, p]));
+
+      const oldMarkups = await db
+        .select()
+        .from(markups)
+        .where(eq(markups.revisionId, previousRevisionId));
+
+      let carried = 0;
+      for (const m of oldMarkups) {
+        const oldPage = oldPages.find((p) => p.id === m.pageId);
+        if (!oldPage) continue;
+        const newPage = newByNum.get(oldPage.pageNumber);
+        if (!newPage) continue;
+        const style = {
+          ...((m.style as Record<string, unknown>) || {}),
+          carriedForward: true,
+          fromRevisionId: previousRevisionId,
+        };
+        await db.insert(markups).values({
+          organizationId,
+          pageId: newPage.id,
+          revisionId: newRevisionId,
+          authorId: m.authorId,
+          type: m.type,
+          geometry: m.geometry,
+          style,
+          status: m.status,
+          subject: m.subject,
+          layer: m.layer,
+          measurement: m.measurement,
+          yjsOriginId: m.yjsOriginId,
+        });
+        carried += 1;
+      }
+
+      // Enqueue pixel diff between revisions
+      try {
+        await this.redis.lpush(
+          DIFF_QUEUE,
+          JSON.stringify({
+            organizationId,
+            documentId,
+            previousRevisionId,
+            newRevisionId,
+            callbackUrl: `${process.env.PUBLIC_API_URL || "http://localhost:3000"}/api/internal/diff/callback`,
+          })
+        );
+      } catch (err) {
+        this.log.warn(`diff enqueue failed: ${err}`);
+      }
+
+      return { carried };
+    }, { bypassRls: true });
+  }
+
+  async applyDiffResult(payload: {
+    organizationId: string;
+    documentId: string;
+    previousRevisionId: string;
+    newRevisionId: string;
+    pages: Array<{
+      pageNumber: number;
+      changedRegions: Array<{ x: number; y: number; w: number; h: number }>;
+    }>;
+  }) {
+    return this.db.withTenant(payload.organizationId, null, async (db) => {
+      const newPages = await db
+        .select()
+        .from(pages)
+        .where(eq(pages.revisionId, payload.newRevisionId));
+      const byNum = new Map(newPages.map((p) => [p.pageNumber, p]));
+
+      for (const pageDiff of payload.pages) {
+        const page = byNum.get(pageDiff.pageNumber);
+        if (!page || !pageDiff.changedRegions.length) continue;
+
+        // Store hotspots as cloud markups on a Diff layer
+        for (const region of pageDiff.changedRegions) {
+          await db.insert(markups).values({
+            organizationId: payload.organizationId,
+            pageId: page.id,
+            revisionId: payload.newRevisionId,
+            type: "cloud",
+            geometry: {
+              points: [
+                { x: region.x, y: region.y },
+                { x: region.x + region.w, y: region.y },
+                { x: region.x + region.w, y: region.y + region.h },
+                { x: region.x, y: region.y + region.h },
+              ],
+              diffHotspot: true,
+            },
+            style: { stroke: "#ea580c", strokeWidth: 2, fill: "rgba(234,88,12,0.15)", layer: "Diff" },
+            status: "open",
+            subject: "Changed region",
+            layer: "Diff",
+          });
+        }
+
+        // Flag carried markups that intersect changed regions
+        const pageMarkups = await db
+          .select()
+          .from(markups)
+          .where(and(eq(markups.pageId, page.id), eq(markups.revisionId, payload.newRevisionId)));
+        for (const m of pageMarkups) {
+          const style = (m.style as Record<string, unknown>) || {};
+          if (!style.carriedForward) continue;
+          const g = m.geometry as Record<string, unknown>;
+          const bounds = this.geometryBounds(g);
+          if (!bounds) continue;
+          const hits = pageDiff.changedRegions.some((r) =>
+            this.rectsOverlap(bounds, { x: r.x, y: r.y, w: r.w, h: r.h })
+          );
+          if (hits) {
+            await db
+              .update(markups)
+              .set({
+                style: { ...style, needsReview: true, flaggedReason: "lands_on_changed_region" },
+                status: "in_review",
+                updatedAt: new Date(),
+              })
+              .where(eq(markups.id, m.id));
+          }
+        }
+      }
+      return { ok: true };
+    }, { bypassRls: true });
+  }
+
+  private geometryBounds(g: Record<string, unknown>): { x: number; y: number; w: number; h: number } | null {
+    if (typeof g.x === "number" && typeof g.w === "number") {
+      return { x: Number(g.x), y: Number(g.y), w: Number(g.w), h: Number(g.h) };
+    }
+    if (Array.isArray(g.points)) {
+      const pts = g.points as Array<{ x: number; y: number }>;
+      if (!pts.length) return null;
+      const xs = pts.map((p) => p.x);
+      const ys = pts.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      return { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY };
+    }
+    if (g.x1 != null) {
+      const x1 = Number(g.x1);
+      const y1 = Number(g.y1);
+      const x2 = Number(g.x2);
+      const y2 = Number(g.y2);
+      return {
+        x: Math.min(x1, x2),
+        y: Math.min(y1, y2),
+        w: Math.abs(x2 - x1),
+        h: Math.abs(y2 - y1),
+      };
+    }
+    return null;
+  }
+
+  private rectsOverlap(
+    a: { x: number; y: number; w: number; h: number },
+    b: { x: number; y: number; w: number; h: number }
+  ) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
   async list(organizationId: string, projectId: string, userId: string) {
@@ -241,6 +520,30 @@ export class DocumentsService {
         });
       }
       return { ok: true };
-    }, { bypassRls: true });
+    }, { bypassRls: true }).then(async (result) => {
+      // Slip-sheet if this revision superseded another
+      try {
+        const raw = await this.redis.get(`plansimple:slip:${payload.revisionId}`);
+        if (raw && payload.status === "ready") {
+          const meta = JSON.parse(raw) as {
+            previousRevisionId: string;
+            organizationId: string;
+            documentId: string;
+          };
+          if (meta.previousRevisionId) {
+            await this.slipSheetMarkups(
+              meta.organizationId,
+              meta.documentId,
+              meta.previousRevisionId,
+              payload.revisionId
+            );
+            await this.redis.del(`plansimple:slip:${payload.revisionId}`);
+          }
+        }
+      } catch (err) {
+        this.log.warn(`slip-sheet after ingest failed: ${err}`);
+      }
+      return result;
+    });
   }
 }

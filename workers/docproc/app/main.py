@@ -22,6 +22,7 @@ log = structlog.get_logger()
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 INGEST_QUEUE = "plansimple:ingest"
 OCR_QUEUE = "plansimple:ocr"
+DIFF_QUEUE = "plansimple:diff"
 S3_ENDPOINT = os.getenv("S3_ENDPOINT", "http://localhost:9000")
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "plansimple")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "plansimplesecret")
@@ -239,19 +240,96 @@ def run_once():
     return {"processed": True, "result": result}
 
 
+def process_diff_job(job: dict[str, Any]) -> dict[str, Any]:
+    """Compare low-res page renders between two revisions; emit changed region boxes."""
+    organization_id = job["organizationId"]
+    document_id = job["documentId"]
+    prev_rev = job["previousRevisionId"]
+    new_rev = job["newRevisionId"]
+    log.info("diff.start", document_id=document_id, prev=prev_rev, new=new_rev)
+
+    # Discover page count from new revision tiles/text presence by probing page 1..N
+    page_results = []
+    for page_number in range(1, 200):
+        prev_key = f"orgs/{organization_id}/documents/{document_id}/revisions/{prev_rev}/pages/{page_number}/0/0/0.webp"
+        new_key = f"orgs/{organization_id}/documents/{document_id}/revisions/{new_rev}/pages/{page_number}/0/0/0.webp"
+        try:
+            prev_bytes = get_bytes(prev_key)
+            new_bytes = get_bytes(new_key)
+        except Exception:
+            break
+        prev_img = Image.open(io.BytesIO(prev_bytes)).convert("RGB")
+        new_img = Image.open(io.BytesIO(new_bytes)).convert("RGB")
+        # Align sizes
+        w = min(prev_img.width, new_img.width)
+        h = min(prev_img.height, new_img.height)
+        prev_img = prev_img.crop((0, 0, w, h))
+        new_img = new_img.crop((0, 0, w, h))
+        # Block diff
+        block = 64
+        regions = []
+        for y in range(0, h, block):
+            for x in range(0, w, block):
+                box = (x, y, min(x + block, w), min(y + block, h))
+                a = prev_img.crop(box)
+                b = new_img.crop(box)
+                # mean abs diff
+                pa = list(a.getdata())
+                pb = list(b.getdata())
+                if not pa:
+                    continue
+                diff = sum(abs(pa[i][0] - pb[i][0]) + abs(pa[i][1] - pb[i][1]) + abs(pa[i][2] - pb[i][2]) for i in range(len(pa))) / (len(pa) * 3)
+                if diff > 12:  # threshold
+                    # Map tile-space back to approximate PDF points assuming z0 width ~ page width
+                    # z0 tile is 512 covering full page width roughly — use page pts from text meta if present
+                    scale = 1.0  # tile px ≈ we treat as PDF pts for hotspot UX on small fixtures
+                    regions.append(
+                        {
+                            "x": x * scale,
+                            "y": y * scale,
+                            "w": (box[2] - box[0]) * scale,
+                            "h": (box[3] - box[1]) * scale,
+                        }
+                    )
+        page_results.append({"pageNumber": page_number, "changedRegions": regions[:40]})
+        log.info("diff.page", page=page_number, regions=len(regions))
+
+    payload = {
+        "organizationId": organization_id,
+        "documentId": document_id,
+        "previousRevisionId": prev_rev,
+        "newRevisionId": new_rev,
+        "pages": page_results,
+    }
+    callback = job.get("callbackUrl") or f"{PUBLIC_API_URL}/api/internal/diff/callback"
+    with httpx.Client(timeout=60.0) as client:
+        r = client.post(
+            callback,
+            json=payload,
+            headers={"x-plansimple-ingest-secret": INGEST_CALLBACK_SECRET},
+        )
+        r.raise_for_status()
+    log.info("diff.done", pages=len(page_results))
+    return payload
+
+
 def worker_loop():
     r = redis.from_url(REDIS_URL)
-    log.info("docproc.worker_started", queue=INGEST_QUEUE)
+    log.info("docproc.worker_started", queues=[INGEST_QUEUE, DIFF_QUEUE])
     while True:
-        item = r.brpop(INGEST_QUEUE, timeout=5)
+        item = r.brpop([INGEST_QUEUE, DIFF_QUEUE], timeout=5)
         if not item:
             continue
-        _, raw = item
+        queue_name, raw = item
+        q = queue_name.decode() if isinstance(queue_name, bytes) else str(queue_name)
         try:
             job = json.loads(raw)
-            process_job(job)
+            if q == DIFF_QUEUE:
+                process_diff_job(job)
+            else:
+                process_job(job)
         except Exception as exc:
-            log.exception("ingest.failed", error=str(exc))
+            log.exception("worker.failed", queue=q, error=str(exc))
 
 
 if __name__ == "__main__":

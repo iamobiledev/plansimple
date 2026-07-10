@@ -110,6 +110,32 @@ export class DocumentsController {
     return this.documents.getPageTiles(orgId, documentId, pageId, user.userId);
   }
 
+  @Post("organizations/:orgId/documents/:documentId/revisions/upload")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 * 1024 },
+    })
+  )
+  async uploadRevision(
+    @CurrentUser() user: AuthUser,
+    @Param("orgId", ParseUUIDPipe) orgId: string,
+    @Param("documentId", ParseUUIDPipe) documentId: string,
+    @UploadedFile() file: Express.Multer.File
+  ) {
+    if (!file?.buffer?.length) throw new BadRequestException("file required");
+    return this.documents.uploadRevision(orgId, documentId, user.userId, file);
+  }
+
+  @Get("organizations/:orgId/documents/:documentId/revisions")
+  listRevisions(
+    @CurrentUser() user: AuthUser,
+    @Param("orgId", ParseUUIDPipe) orgId: string,
+    @Param("documentId", ParseUUIDPipe) documentId: string
+  ) {
+    return this.documents.listRevisions(orgId, documentId, user.userId);
+  }
+
   @Public()
   @Post("internal/ingest/callback")
   callback(
@@ -121,5 +147,18 @@ export class DocumentsController {
       throw new UnauthorizedException("Invalid ingest callback secret");
     }
     return this.documents.applyIngestResult(body as never);
+  }
+
+  @Public()
+  @Post("internal/diff/callback")
+  diffCallback(
+    @Headers("x-plansimple-ingest-secret") secret: string | undefined,
+    @Body() body: unknown
+  ) {
+    const expected = process.env.INGEST_CALLBACK_SECRET || "dev-ingest-secret";
+    if (secret !== expected) {
+      throw new UnauthorizedException("Invalid ingest callback secret");
+    }
+    return this.documents.applyDiffResult(body as never);
   }
 }

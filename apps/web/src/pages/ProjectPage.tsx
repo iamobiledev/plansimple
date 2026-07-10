@@ -9,6 +9,7 @@ import { FeatureFlagGate, useFeatureFlags } from "../components/FeatureFlags";
 import MarkupListPanel from "../components/MarkupListPanel";
 import ToolChestPanel from "../components/ToolChestPanel";
 import { useCollabRoom } from "../viewer/useCollab";
+import OverlayCompare from "../viewer/OverlayCompare";
 import {
   DEFAULT_STYLE,
   type DrawTool,
@@ -51,7 +52,14 @@ export default function ProjectPage() {
   const markupEnabled = Boolean(flags.data?.markup_engine);
   const realtimeEnabled = Boolean(flags.data?.realtime_sessions);
   const measurementsEnabled = Boolean(flags.data?.measurements);
+  const compareEnabled = Boolean(flags.data?.revision_compare);
   const user = useAuthStore((s) => s.user);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareOpacity, setCompareOpacity] = useState(0.55);
+  const [revisions, setRevisions] = useState<
+    Array<{ id: string; versionNumber: number; processingStatus: string }>
+  >([]);
+  const [compareRevisionId, setCompareRevisionId] = useState<string | null>(null);
 
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -90,6 +98,48 @@ export default function ProjectPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    if (!orgId || !activeId || !compareEnabled) {
+      setRevisions([]);
+      return;
+    }
+    apiFetch<Array<{ id: string; versionNumber: number; processingStatus: string }>>(
+      `/organizations/${orgId}/documents/${activeId}/revisions`
+    )
+      .then((rows) => {
+        setRevisions(rows);
+        const older = rows.find((r) => r.id !== detail?.currentRevisionId);
+        setCompareRevisionId(older?.id ?? null);
+      })
+      .catch(() => setRevisions([]));
+  }, [orgId, activeId, compareEnabled, detail?.currentRevisionId]);
+
+  async function uploadNewRevision(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!orgId || !activeId) return;
+    const form = e.currentTarget;
+    const fileInput = form.elements.namedItem("revision") as HTMLInputElement;
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      await apiFetch(`/organizations/${orgId}/documents/${activeId}/revisions/upload`, {
+        method: "POST",
+        body,
+      });
+      setStatus("New revision uploading / processing…");
+      await refreshDocs();
+      await loadDetail(activeId);
+      form.reset();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Revision upload failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const loadDetail = useCallback(
     async (documentId: string) => {
@@ -418,6 +468,57 @@ export default function ProjectPage() {
                 </div>
               </div>
             ) : null}
+            {compareEnabled && activeId && (
+              <div className="mt-4 space-y-2 rounded-xl border border-slate-200 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Revisions
+                </p>
+                <ul className="space-y-1 text-xs text-slate-600">
+                  {revisions.map((r) => (
+                    <li key={r.id}>
+                      v{r.versionNumber} · {r.processingStatus}
+                      {r.id === detail?.currentRevisionId ? " · current" : ""}
+                    </li>
+                  ))}
+                </ul>
+                <form onSubmit={uploadNewRevision} className="space-y-1">
+                  <input type="file" name="revision" accept="application/pdf" className="w-full text-xs" />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="w-full rounded bg-slate-900 px-2 py-1 text-xs font-semibold text-white"
+                  >
+                    Upload new revision
+                  </button>
+                </form>
+                {revisions.length > 1 && (
+                  <>
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={compareMode}
+                        onChange={(e) => setCompareMode(e.target.checked)}
+                      />
+                      Overlay compare
+                    </label>
+                    {compareMode && (
+                      <label className="block text-xs text-slate-600">
+                        Opacity
+                        <input
+                          type="range"
+                          min={0.1}
+                          max={0.9}
+                          step={0.05}
+                          value={compareOpacity}
+                          onChange={(e) => setCompareOpacity(Number(e.target.value))}
+                          className="w-full"
+                        />
+                      </label>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <div className="border-t border-slate-200 p-3 space-y-3">
             <FeatureFlagGate flag="markup_engine">
@@ -479,6 +580,18 @@ export default function ProjectPage() {
             </div>
           )}
           {activePage && tilePrefix && activePage.processingStatus === "ready" ? (
+            compareMode && compareRevisionId && orgId && activeId ? (
+              <div className="h-full overflow-auto p-4">
+                <OverlayCompare
+                  baseTilePrefix={`orgs/${orgId}/documents/${activeId}/revisions/${compareRevisionId}/pages/${activePage.pageNumber}`}
+                  overlayTilePrefix={tilePrefix}
+                  widthPts={activePage.widthPts}
+                  heightPts={activePage.heightPts}
+                  authHeader={authHeader}
+                  opacity={compareOpacity}
+                />
+              </div>
+            ) : (
             <TileViewport
               widthPts={activePage.widthPts}
               heightPts={activePage.heightPts}
@@ -495,6 +608,7 @@ export default function ProjectPage() {
               onCreateMarkup={markupEnabled ? createMarkup : undefined}
               onCalibrate={measurementsEnabled ? onCalibrate : undefined}
             />
+            )
           ) : (
             <div className="flex h-full items-center justify-center bg-slate-100 text-slate-500">
               {detail?.processingStatus === "processing"
