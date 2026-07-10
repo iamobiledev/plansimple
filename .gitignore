@@ -37,3 +37,5 @@ e2e/test-results/
 e2e/playwright-report/
 .vercel-prod-args.json
 apps/web/.vercel-deploy-args.json
+scripts/vercel-mcp-deploy-args.json
+.tmp-deploy-args.json
